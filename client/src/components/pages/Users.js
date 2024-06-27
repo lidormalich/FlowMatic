@@ -114,7 +114,7 @@ const Users = () => {
 
     const getData = () => {
         axios
-            .post("/api/user-data")
+            .post("/api/users/user-data")
             .then(res => {
                 setRecords(res.data);
             })
@@ -129,7 +129,7 @@ const Users = () => {
 
     const deleteRecord = (record) => {
         axios
-            .post("/api/user-delete", { _id: record._id })
+            .post("/api/users/user-delete", { _id: record._id })
             .then(res => {
                 if (res.status === 200) {
                     toast(res.data.message, {

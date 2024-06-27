@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { Paper, Button, makeStyles, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from '@material-ui/core';
+import React, { useEffect, useState } from 'react';
+import { Paper, Button, TextField, Dialog, DialogActions, DialogContent, DialogTitle } from '@material-ui/core';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
-import { HebrewCalendar, HDate } from 'hebcal';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import Sidebar from '../partials/Sidebar';
 import Navbar from '../partials/Navbar';
 import EventsList from './EventsList';
+require('moment/locale/he.js')
 
 moment.locale('he');
 const localizer = momentLocalizer(moment);
@@ -24,51 +23,24 @@ const myMessages = {
     event: 'אירוע',
 };
 
-const useStyles = makeStyles((theme) => ({
-    root: {
-        margin: theme.spacing(3),
-        padding: theme.spacing(3),
-        direction: 'rtl',
-    },
-    button: {
-        margin: theme.spacing(1),
-    },
-    textField: {
-        margin: theme.spacing(1),
-    },
-    dialog: {
-        direction: 'rtl',
-    },
-    dialogTitle: {
-        textAlign: 'right',
-    },
-    dialogContent: {
-        textAlign: 'right',
-    },
-}));
-
-const convertToHebrewDate = (date) => {
-    const hDate = new HDate(date);
-    return hDate.toString('h');
-};
-const convertToHebrewDateWithHolidays = (date) => {
-    const hDate = new HDate(date);
-    const holidays = HebrewCalendar.getHolidaysOnDate(hDate);
-    let holidayStr = '';
-    if (holidays && holidays.length > 0) {
-        holidayStr = ' - ' + holidays.map(holiday => holiday.getDesc('he')).join(', ');
-    }
-    return hDate.toString('h') + holidayStr;
-};
 const Events = () => {
-    const classes = useStyles();
-    const [events, setEvents] = useState([{
-        title: "בדיקה 1",
-        start: new Date("2023-06-25T00:00:00.000Z"),
-        end: new Date("2023-06-30T00:00:00.000Z")
-    }]);
+    const [events, setEvents] = useState([]);
     const [open, setOpen] = useState(false);
     const [newEvent, setNewEvent] = useState({ title: '', start: '', end: '' });
+
+    const fetchEvents = async () => {
+        try {
+            const response = await fetch('/api/events/month');
+            const data = await response.json();
+            const updatedEvents = data.map(event => ({
+                ...event,
+                title: `טיפול של ${event.customerName}`
+            }));
+            setEvents(updatedEvents);
+        } catch (error) {
+            console.error('Error fetching events:', error);
+        }
+    };
 
     const handleAddEvent = () => {
         setOpen(true);
@@ -81,95 +53,123 @@ const Events = () => {
     const handleSave = () => {
         setEvents([...events, { ...newEvent, start: new Date(newEvent.start), end: new Date(newEvent.end) }]);
         setOpen(false);
-        setNewEvent({ title: '', start: '', end: '' }); // Reset form
+        setNewEvent({ title: '', start: '', end: '' });
+        fetchEvents();
     };
-    console.log({ events });
+
+    useEffect(() => {
+        fetchEvents();
+    }, []);
+
     return (
         <>
             <Navbar />
-            <div className="d-flex" id="wrapper">
-                {/* <Sidebar /> */}
-                <Paper className={classes.root}>
-                    <Button variant="contained" color="primary" className={classes.button} onClick={handleAddEvent}>
-                        הוסף אירוע
-                    </Button>
-                    <Dialog
-                        open={open}
-                        onClose={handleClose}
-                        className={classes.dialog}
-                        scroll='body' // שינוי ל-body כדי לאפשר גלילה רק אם יש צורך
-                        maxWidth={false} // הסרת הגבלת maxWidth
-                        fullWidth={true}
-                        dir="rtl"
-                        PaperProps={{
-                            style: { // הוספת תכונות סגנון ל-Paper
-                                maxWidth: '100%', // מקסימום רוחב
-                                width: 'auto', // רוחב אוטומטי בהתאם לתוכן
-                                maxHeight: 'calc(100% - 64px)', // גובה מקסימלי כדי למנוע גלילה
-                                overflowY: 'auto', // גלילה אוטומטית בציר Y אם יש צורך
-                            },
-                        }}
-                    >
-                        <DialogTitle className={classes.dialogTitle}>הוסף אירוע חדש</DialogTitle>
-                        <DialogContent className={classes.dialogContent}>
-                            <TextField
-                                autoFocus
-                                margin="dense"
-                                id="title"
-                                label="כותרת אירוע"
-                                type="text"
-                                fullWidth
-                                value={newEvent.title}
-                                onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                                className={classes.textField}
-                            />
-                            <TextField
-                                id="start"
-                                label="תאריך התחלה"
-                                type="date"
-                                value={newEvent.start}
-                                onChange={(e) => setNewEvent({ ...newEvent, start: e.target.value })}
-                                className={classes.textField}
-                                InputLabelProps={{
-                                    shrink: true,
-                                }}
-                            />
-                            <TextField
-                                id="end"
-                                label="תאריך סיום"
-                                type="date"
-                                value={newEvent.end}
-                                onChange={(e) => setNewEvent({ ...newEvent, end: e.target.value })}
-                                className={classes.textField}
-                                InputLabelProps={{
-                                    shrink: true,
-                                }}
-                            />
-                        </DialogContent>
-                        <DialogActions>
-                            <Button onClick={handleClose} color="primary">
-                                ביטול
-                            </Button>
-                            <Button onClick={handleSave} color="primary">
-                                שמור
-                            </Button>
-                        </DialogActions>
-                    </Dialog>
+            <div className="block md:hidden">
+                <Button
+                    variant="contained"
+                    color="primary"
+                    className='m-4'
+                    onClick={handleAddEvent}
+                >
+                    הוסף אירוע
+                </Button>
+            </div>
+            <div className="flex flex-col sm:flex-row-reverse p-3">
+                <div className="md:w-1/3 w-full p-3">
+                    <EventsList events={events} />
+                </div>
+                <Paper className="md:w-2/3 w-full p-3 mt-4 md:mt-0">
+                    <div className="hidden md:block">
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            className='m-4'
+                            onClick={handleAddEvent}
+                        >
+                            הוסף אירוע
+                        </Button>
+                    </div>
                     <Calendar
                         localizer={localizer}
                         events={events.map(event => ({
                             ...event,
-                            title: `${event.title} (${convertToHebrewDate(event.start)} - ${convertToHebrewDate(event.end)})`
+                            title: event.title,
+                            start: new Date(event.startTime),
+                            end: new Date(event.endTime)
                         }))}
                         messages={myMessages}
                         startAccessor="start"
                         endAccessor="end"
-                        style={{ height: 500, margin: '20px 0' }}
+                        style={{ height: 500 }}
                         rtl
+                        onShowMore={(events, date) => {
+                            console.log("אירועים נוספים:", events);
+                            console.log("תאריך:", date);
+                        }}
                     />
                 </Paper>
-                <EventsList events={events} />
             </div>
+            <Dialog
+                open={open}
+                onClose={handleClose}
+                scroll='body'
+                maxWidth={false}
+                fullWidth={true}
+                dir="rtl"
+                PaperProps={{
+                    style: {
+                        maxWidth: '100%',
+                        width: 'auto',
+                        maxHeight: 'calc(100% - 64px)',
+                        overflowY: 'auto',
+                    },
+                }}
+            >
+                <DialogTitle className="text-right">הוסף אירוע חדש</DialogTitle>
+                <DialogContent className="text-right">
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        id="title"
+                        label="כותרת אירוע"
+                        type="text"
+                        fullWidth
+                        value={newEvent.title}
+                        onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                        className="my-2"
+                    />
+                    <TextField
+                        id="start"
+                        label="תאריך התחלה"
+                        type="date"
+                        value={newEvent.start}
+                        onChange={(e) => setNewEvent({ ...newEvent, start: e.target.value })}
+                        className="my-2"
+                        InputLabelProps={{
+                            shrink: true,
+                        }}
+                    />
+                    <TextField
+                        id="end"
+                        label="תאריך סיום"
+                        type="date"
+                        value={newEvent.end}
+                        onChange={(e) => setNewEvent({ ...newEvent, end: e.target.value })}
+                        className="my-2"
+                        InputLabelProps={{
+                            shrink: true,
+                        }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleClose} color="primary">
+                        ביטול
+                    </Button>
+                    <Button onClick={handleSave} color="primary">
+                        שמור
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </>
     );
 };

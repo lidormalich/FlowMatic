@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import AppointmentSummary from '../AppointmentSummary';
 
 const AppointmentModal = ({
     showModal,
@@ -7,22 +8,41 @@ const AppointmentModal = ({
     selectedSlot,
     handleSaveAppointment,
     addToGoogleCalendar,
-    selectedServices,
-    setSelectedServices,
-    customerName,
-    setCustomerName,
-    customerPhone,
-    setCustomerPhone,
+    createICalEvent,
+    customerDetails,
+    setCustomerDetails,
     services
 }) => {
     const [confirmAddToCalendar, setConfirmAddToCalendar] = useState(false);
+    const [isInputValid, setIsInputValid] = useState(true);
+
+    // const handlePhoneChange = (e) => {
+    //     const input = e.target.value;
+    //     // מאפשר רק קלט של ספרות ומוודא שהאורך לא יעלה על 9
+    //     const formattedInput = input.replace(/[^\d]/g, '').slice(0, 9);
+    //     setCustomerDetails((prev) => ({ ...prev, phone: formattedInput }));
+    // };
+
+    const handlePhoneChange = (e) => {
+        const input = e.target.value;
+        const isDigitsOnly = /^\d*$/.test(input);
+
+        if (!isDigitsOnly) {
+            setIsInputValid(false);
+            return; // אל תעדכן את ה-state של הטלפון אם הקלט לא תקין
+        }
+
+        setIsInputValid(true); // הקלט תקין, אז מאפשר לעדכן את ה-state
+        setCustomerDetails((prev) => ({ ...prev, phone: input.slice(0, 9) }));
+    };
 
     const handleServiceChange = (service) => {
-        setSelectedServices((prev) =>
-            prev.includes(service)
-                ? prev.filter((item) => item !== service)
-                : [...prev, service]
-        );
+        setCustomerDetails((prev) => ({
+            ...prev,
+            services: prev.services.includes(service)
+                ? prev.services.filter((item) => item !== service)
+                : [...prev.services, service],
+        }));
     };
 
     const handleSaveAndAddToCalendar = async () => {
@@ -31,11 +51,24 @@ const AppointmentModal = ({
     };
 
     return (
-        <div className={`fixed inset-0 z-10 overflow-hidden flex items-center justify-center ${showModal ? 'block' : 'hidden'}`}>
+        <div className={`fixed inset-0 z-10 overflow-hidden flex items-center justify-center ${showModal ? 'block' : 'hidden'} `}>
+
+
             <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
             <div className="bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full">
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                    <div className="sm:flex sm:items-start">
+
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 relative">
+                    <button
+                        type="button"
+                        className="absolute top-0 left-0 m-2 p-2 text-gray-400 hover:text-gray-500"
+                        onClick={() => setShowModal(false)}
+                    >
+                        <span className="sr-only">Close</span>
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                    {!confirmAddToCalendar ? <div className="sm:flex sm:items-start">
                         <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
                             <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Select Services</h3>
                             <div className="mb-4">
@@ -46,8 +79,8 @@ const AppointmentModal = ({
                                     type="text"
                                     id="customerName"
                                     className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                    value={customerName}
-                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    value={customerDetails.name}
+                                    onChange={(e) => setCustomerDetails((prev) => ({ ...prev, name: e.target.value }))}
                                 />
                             </div>
                             <div className="mb-4">
@@ -55,22 +88,24 @@ const AppointmentModal = ({
                                     Customer Phone
                                 </label>
                                 <input
-                                    type="text"
+                                    type="tel"
                                     id="customerPhone"
+                                    pattern="^\d{9}$"
+                                    title="Phone number must be exactly 9 digits."
                                     className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                    value={customerPhone}
-                                    onChange={(e) => setCustomerPhone(e.target.value)}
+                                    value={customerDetails.phone}
+                                    onChange={handlePhoneChange}
                                 />
+                                <p className={`text-red-500 ${!isInputValid ? "block" : "hidden "}`}>נא להכניס מספר טלפון תקין</p>
                             </div>
-                            <div className="mb-4">
-                                <p className="text-sm font-medium text-gray-700">Select Services:</p>
+                            <div className="grid grid-cols-1 gap-4">
                                 {services.map((service) => (
-                                    <div key={service} className="flex items-center mb-2">
+                                    <div key={service} className="flex items-center">
                                         <input
-                                            type="checkbox"
                                             id={service}
-                                            className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
-                                            checked={selectedServices.includes(service)}
+                                            type="checkbox"
+                                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                            checked={customerDetails.services.includes(service)}
                                             onChange={() => handleServiceChange(service)}
                                         />
                                         <label htmlFor={service} className="ml-2 block text-sm text-gray-900">
@@ -80,48 +115,45 @@ const AppointmentModal = ({
                                 ))}
                             </div>
                         </div>
+                        {/* </div> */}
+                    </div> : <>
+                        <AppointmentSummary customerDetails={customerDetails} selectedDate={selectedDate} selectedSlot={selectedSlot} />
+                    </>}
+                </div>
+                {!confirmAddToCalendar ? (
+                    <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <button
+                            type="button"
+                            className="mt-3 w-full inline-flex justify-center rounded-md border border-indigo-600 shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-'white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm mx-1" onClick={handleSaveAndAddToCalendar}
+                        >
+                            Save Appointment
+                        </button>
+                        <button
+                            type="button"
+                            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm mx-1"
+                            onClick={() => setShowModal(false)}
+                        >
+                            Cancel
+                        </button>
                     </div>
-                </div>
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                    {!confirmAddToCalendar ? (
-                        <>
-                            <button
-                                type="button"
-                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
-                                onClick={handleSaveAndAddToCalendar}
-                            >
-                                Save Appointment
-                            </button>
-                            <button
-                                type="button"
-                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-                                onClick={() => setShowModal(false)}
-                            >
-                                Close
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                type="button"
-                                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gray-100 text-base font-medium text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
-                                onClick={addToGoogleCalendar}
-                            >
-                                Add to Google Calendar
-                            </button>
-                            <button
-                                type="button"
-                                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-                                onClick={() => {
-                                    setShowModal(false);
-                                    setConfirmAddToCalendar(false);
-                                }}
-                            >
-                                Close
-                            </button>
-                        </>
-                    )}
-                </div>
+                ) : (
+                    <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <button
+                            type="button"
+                            className="mt-3 w-full inline-flex justify-center rounded-md border border-indigo-600 shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-'white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm mx-2"
+                            onClick={addToGoogleCalendar}
+                        >
+                            Add to Google Calendar
+                        </button>
+                        <button
+                            type="button"
+                            className="mt-3 w-full inline-flex justify-center rounded-md border border-indigo-600 shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-'white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm mx-2"
+                            onClick={createICalEvent}
+                        >
+                            Download ICAL
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

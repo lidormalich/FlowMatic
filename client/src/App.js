@@ -46,12 +46,13 @@ class App extends Component {
                         <Switch>
                             <Route exact path="/" component={Login} />
                             <Route exact path="/register" component={Register} />
-                            <Route exact path="/login" component={Login} />
+                            <Route exact path="/login" component={Login} /> 
+                            <Route exact path="/AppointmentScheduler" component={AppointmentScheduler} />
+
                             <Switch>
                                 <PrivateRoute exact path="/dashboard" component={Dashboard} />
                                 <PrivateRoute exact path="/users" component={User} />
                                 <PrivateRoute exact path="/events" component={Events} />
-                                <PrivateRoute exact path="/AppointmentScheduler" component={AppointmentScheduler} />
                             </Switch>
                             <Route exact path="*" component={NotFound} />
                         </Switch>
