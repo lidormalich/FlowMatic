@@ -7,7 +7,7 @@ import {
 
 export const addUser = (userData, history) => dispatch => {
     axios
-        .post("/api/user-add", userData)
+        .post("/api/users/user-add", userData)
         .then(res =>
             dispatch({
                 type: USER_ADD,
@@ -24,7 +24,7 @@ export const addUser = (userData, history) => dispatch => {
 
 export const updateUser = (userData) => dispatch => {
     axios
-        .post("/api/user-update", userData)
+        .post("/api/users/user-update", userData)
         .then(res =>
             dispatch({
                 type: USER_UPDATE,
