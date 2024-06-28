@@ -4,8 +4,12 @@ import AppointmentModal from './AppointmentModal';
 import { convertToHebrewDate } from '../global';
 import Header from '../Header';
 import Footer from '../Footer';
+import { useParams } from 'react-router-dom/cjs/react-router-dom';
 
 const AppointmentScheduler = () => {
+    const { user } = useParams();
+    console.log({ user });
+
     const today = useMemo(() => {
         const now = new Date();
         now.setHours(0, 0, 0, 0);
