@@ -1,13 +1,14 @@
-import React from "react";
+import React, { useContext } from "react";
 import PropTypes from "prop-types";
 import { useDispatch, useSelector } from "react-redux";
-import { logoutUser } from "../../actions/authActions";
+// import { logoutUser } from "../../actions/authActions";
 import Navbar from "../partials/Navbar";
 import Sidebar from "../partials/Sidebar";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faList } from "@fortawesome/free-solid-svg-icons/faList";
 import { Link } from "react-router-dom";
 import { faUserAlt } from "@fortawesome/free-solid-svg-icons/faUserAlt";
+// import { useParams } from "react-router-dom/cjs/react-router-dom";
 
 const Dashboard = () => {
     const dispatch = useDispatch();
@@ -15,7 +16,7 @@ const Dashboard = () => {
 
     const onLogoutClick = e => {
         e.preventDefault();
-        dispatch(logoutUser());
+        // dispatch(logoutUser());
     };
 
     return (
@@ -85,7 +86,7 @@ const Dashboard = () => {
 };
 
 Dashboard.propTypes = {
-    logoutUser: PropTypes.func.isRequired,
+    // logoutUser: PropTypes.func.isRequired,
     auth: PropTypes.object.isRequired
 };
 

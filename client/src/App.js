@@ -36,7 +36,7 @@ if (localStorage.jwtToken) {
         window.location.href = "./login";
     }
 }
-
+const users = ["lidor", "admin", "user"];
 class App extends Component {
     render () {
         return (
@@ -47,6 +47,16 @@ class App extends Component {
                             <Route exact path="/" component={Login} />
                             <Route exact path="/register" component={Register} />
                             <Route exact path="/login" component={Login} /> 
+                            {/* {users.map((user, index) => {    return (
+                                <Route
+                                key={index} 
+                                exact 
+                                path={"/" + user + "/AppointmentScheduler"} 
+                                render={(props) => <Dashboard {...props} user={user} />}
+                            />
+                                );
+                            })} */}
+                            <Route exact path="/:user/AppointmentScheduler" component={AppointmentScheduler} />
                             <Route exact path="/AppointmentScheduler" component={AppointmentScheduler} />
 
                             <Switch>
