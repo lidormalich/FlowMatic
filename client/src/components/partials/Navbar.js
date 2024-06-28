@@ -1,53 +1,154 @@
-import React from "react";
-import PropTypes from "prop-types";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSignOutAlt } from "@fortawesome/free-solid-svg-icons";
-import { useDispatch, useSelector } from "react-redux";
-import { logoutUser } from "../../actions/authActions";
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 
 const Navbar = () => {
-    const dispatch = useDispatch();
-    const auth = useSelector(state => state.auth);
-    const { user } = auth;
+  const [isOpen, setIsOpen] = useState(false);
 
-    const onLogoutClick = e => {
-        e.preventDefault();
-        dispatch(logoutUser());
-    };
+  const toggleMenu = () => {
+    setIsOpen(!isOpen);
+  };
 
-    return (
-        <div className="container-fluid p-0" dir="rtl"> {/* הוספת dir="rtl" */}
-            <nav className="navbar navbar-expand-lg navbar-dark bg-primary">
-                <a className="navbar-brand" href="/">Brand</a>
-                <button className="navbar-toggler" type="button" data-toggle="collapse"
-                        data-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false"
-                        aria-label="Toggle navigation">
-                    <span className="navbar-toggler-icon"></span>
+  return (
+    <nav className="bg-blue-500 p-4">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex justify-between items-center">
+          <div className="flex-shrink-0">
+            {/* Logo */}
+            <Link to="/" className="flex items-center">
+              <img
+                className="h-8 w-auto mr-2"
+                src="/path/to/your/logo.png"
+                alt="Logo"
+              />
+              <span className="text-white text-xl font-bold">Your Company</span>
+            </Link>
+          </div>
+          <div className="block lg:hidden">
+            <button
+              onClick={toggleMenu}
+              className="text-white focus:outline-none"
+            >
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                {isOpen ? (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                ) : (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                )}
+              </svg>
+            </button>
+          </div>
+          <div className="hidden lg:flex lg:items-center lg:w-auto">
+            <div className="flex space-x-4">
+              <Link
+                to="/"
+                className="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Home
+              </Link>
+              <div className="relative">
+                <button
+                  onClick={() => toggleMenu()}
+                  className="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Services
                 </button>
-                <div className="collapse navbar-collapse" id="navbarNavDropdown">
-                    <ul className="navbar-nav mr-auto"> {/* החלפת ml-auto ב-mr-auto */}
-                        <li className="nav-item dropdown">
-                            <a className="nav-link dropdown-toggle" href="#" id="settings"
-                               data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                הגדרות
-                            </a>
-                            <div className="dropdown-menu" aria-labelledby="settings">
-                                <a className="dropdown-item" href="#" onClick={onLogoutClick}>התנתק</a>
-                            </div>
-                        </li>
-                        <li className="nav-item active ">
-                            <a className="nav-link" href="#" onClick={onLogoutClick}>התנתק ({user.name}) <FontAwesomeIcon icon={faSignOutAlt} /> </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
+                {isOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-lg shadow-lg z-20">
+                    <Link
+                      to="/service1"
+                      className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                    >
+                      Service 1
+                    </Link>
+                    <Link
+                      to="/service2"
+                      className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                    >
+                      Service 2
+                    </Link>
+                  </div>
+                )}
+              </div>
+              <Link
+                to="/about"
+                className="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                About
+              </Link>
+              <Link
+                to="/contact"
+                className="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Contact
+              </Link>
+            </div>
+          </div>
         </div>
-    );
-};
-
-Navbar.propTypes = {
-    logoutUser: PropTypes.func.isRequired,
-    auth: PropTypes.object.isRequired
+      </div>
+      {/* Mobile menu */}
+      <div className={`lg:hidden ${isOpen ? "block" : "hidden"}`}>
+        <div className="px-2 pt-2 pb-3 space-y-1">
+          <Link
+            to="/"
+            className="text-white block px-3 py-2 rounded-md text-base font-medium"
+          >
+            Home
+          </Link>
+          <Link
+            to="/about"
+            className="text-white block px-3 py-2 rounded-md text-base font-medium"
+          >
+            About
+          </Link>
+          <div className="relative">
+            <button
+              onClick={() => toggleMenu()}
+              className="text-white block w-full text-left px-3 py-2 rounded-md text-base font-medium"
+            >
+              Services
+            </button>
+            {isOpen && (
+              <div className="absolute top-0 left-0 mt-0 w-full bg-white rounded-lg shadow-lg z-20">
+                <Link
+                  to="/service1"
+                  className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                >
+                  Service 1
+                </Link>
+                <Link
+                  to="/service2"
+                  className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                >
+                  Service 2
+                </Link>
+              </div>
+            )}
+          </div>
+          <Link
+            to="/contact"
+            className="text-white block px-3 py-2 rounded-md text-base font-medium"
+          >
+            Contact
+          </Link>
+        </div>
+      </div>
+    </nav>
+  );
 };
 
 export default Navbar;
