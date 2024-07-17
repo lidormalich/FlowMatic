@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const passport = require('passport');
 const users = require('./routes/api/users');
 const events = require('./routes/api/events');
+require('dotenv').config();
 
 require('./config/passport')(passport);
 
@@ -22,8 +23,8 @@ app.use(bodyParser.json());
 
 app.listen(9000);
 
-const db = require('./config/keys').mongoURI;
-
+// const db = require('./config/keys').mongoURI;
+const db = process.env.MONGO_URI;
 mongoose.connect(db, { useNewUrlParser: true,useUnifiedTopology: true})
     .then(() =>
         console.log('MongoDB successfully connected.')

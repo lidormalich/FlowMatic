@@ -30,10 +30,10 @@ export const updateUser = (userData) => dispatch => {
                 type: USER_UPDATE,
                 payload: res,
             })
-        ).catch(err =>
-        dispatch({
-            type: GET_ERRORS,
-            payload: err.response.data
-        })
+        ).catch(err => console.log({err})
+        // dispatch({
+        //     type: GET_ERRORS,
+        //     payload: err.response.data
+        // })
     );
 };
