@@ -9,10 +9,11 @@ const moment = require('moment');
 router.get('/appointments', async (req, res) => {
     console.log("GET 15");
     const { date, duration = 30 } = req.query; 
+    const { user } = req.headers;
 
     try {
         
-        const appointments = await Event.find({ date });
+        const appointments = await Event.find({ date, user });
         console.log({appointments});
         const occupiedSlots = appointments.map(appointment => ({
             startTime: moment(`${date} ${appointment.description}`, 'YYYY-MM-DD HH:mm'),
@@ -46,6 +47,7 @@ router.get('/appointments', async (req, res) => {
     }
 });
 router.get('/events/month', async (req, res) => {
+    const { user } = req.headers;
     const today = moment().startOf('day');
     const nextMonth = moment(today).add(1, 'month');
 
@@ -54,7 +56,7 @@ router.get('/events/month', async (req, res) => {
             date: {
                 $gte: today.toDate(),
                 $lt: nextMonth.toDate()
-            }
+            },user
         }).sort({ date: 1,description:1 }); // ממיין את האירועים לפי תאריך
 console.log({events});
         res.status(200).json(events);
@@ -65,7 +67,7 @@ console.log({events});
 router.post('/appointments', async (req, res) => {
     console.log("POST 51");
     const { date ,time,services,customerName,customerPhone,location,endTime,startTime,description} = req.body;
-
+const user = req.headers.user;
     try {
         
         if (!moment(date, 'YYYY-MM-DD', true).isValid()) {
@@ -78,7 +80,7 @@ router.post('/appointments', async (req, res) => {
             time,
             services,
             customerName,
-            customerPhone,location,endTime,startTime,description
+            customerPhone,location,endTime,startTime,description,user
         });
 
         

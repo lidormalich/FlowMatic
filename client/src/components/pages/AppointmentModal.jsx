@@ -33,7 +33,7 @@ const AppointmentModal = ({
         }
 
         setIsInputValid(true); // הקלט תקין, אז מאפשר לעדכן את ה-state
-        setCustomerDetails((prev) => ({ ...prev, phone: input.slice(0, 9) }));
+        setCustomerDetails((prev) => ({ ...prev, phone: input.slice(0, 10) }));
     };
 
     const handleServiceChange = (service) => {
