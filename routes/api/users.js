@@ -92,6 +92,7 @@ router.post('/login', (req, res) => {
     const email = req.body.email;
     const password = req.body.password;
     User.findOne({ email }).then(user => {
+        console.log({user});
         if (!user) {
             return res.status(404).json({ email: 'Email not found' });
         }
@@ -110,7 +111,8 @@ router.post('/login', (req, res) => {
                     (err, token) => {
                         res.json({
                             success: true,
-                            token: 'Bearer ' + token
+                            token: 'Bearer ' + token,
+                            user: user.name
                         });
                     }
                 );

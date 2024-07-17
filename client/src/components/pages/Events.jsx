@@ -26,7 +26,7 @@ const myMessages = {
 const Events = () => {
     const [events, setEvents] = useState([]);
     const [open, setOpen] = useState(false);
-    const [newEvent, setNewEvent] = useState({ title: '', start: '', end: '' });
+    const [newEvent, setNewEvent] = useState({ title: '', start: '', end: '', user: localStorage.getItem('user') });
 
     const fetchEvents = async () => {
         try {

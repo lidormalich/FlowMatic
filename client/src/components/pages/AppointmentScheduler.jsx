@@ -44,7 +44,13 @@ const AppointmentScheduler = () => {
     const fetchBusySlots = async (date) => {
         setLoading(true);
         try {
-            const response = await fetch(`/api/appointments?date=${date}`);
+            const response = await fetch(`/api/appointments?date=${date}`, {
+                method: 'GET', // Optional, since GET is the default method
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Username': user
+                }
+            });;
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
             // setBusySlots(data);
@@ -93,7 +99,8 @@ const AppointmentScheduler = () => {
             description: selectedSlot,
             startTime: moment(`${selectedDate} ${selectedSlot}`, 'YYYY-MM-DD HH:mm').toISOString(),
             endTime: moment(`${selectedDate} ${selectedSlot}`, 'YYYY-MM-DD HH:mm').add(30, 'minutes').toISOString(),
-            location: 'רחוב בינמין מינץ 39, פתח תקווה'
+            location: 'רחוב בינמין מינץ 39, פתח תקווה',
+            user
         };
 
         try {

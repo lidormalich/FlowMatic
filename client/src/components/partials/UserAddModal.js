@@ -16,6 +16,7 @@ class UserAddModal extends Component {
             email: "",
             password: "",
             password2: "",
+            userString: "",
             errors: {}
         };
     }
@@ -48,7 +49,8 @@ class UserAddModal extends Component {
             name: this.state.name,
             email: this.state.email,
             password: this.state.password,
-            password2: this.state.password2
+            password2: this.state.password2,
+            userString: this.state.userString
         };
         this.props.addUser(newUser, this.props.history);
     };
@@ -89,6 +91,19 @@ class UserAddModal extends Component {
                                         type="email"
                                         className={classnames("form-control", {
                                             invalid: errors.email
+                                        })}
+                                    />
+                                    <span className="text-danger">{errors.email}</span>
+                                </div>
+                                <div className="form-group">
+                                    <label htmlFor="userString">userString</label>
+                                    <input
+                                        onChange={this.onChange}
+                                        value={this.state.userString}
+                                        id="userString"
+                                        type="text"
+                                        className={classnames("form-control", {
+                                            invalid: errors.userString
                                         })}
                                     />
                                     <span className="text-danger">{errors.email}</span>
