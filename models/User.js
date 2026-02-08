@@ -7,11 +7,71 @@ const UserSchema = new Schema({
     },
     email: {
         type: String,
-        required: true
+        required: true,
+        unique: true
+    },
+    username: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
     },
     password: {
         type: String,
         required: true
+    },
+    role: {
+        type: String,
+        enum: ['client', 'business_owner', 'admin'],
+        default: 'client'
+    },
+    credits: {
+        type: Number,
+        default: 0
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    isSuspended: {
+        type: Boolean,
+        default: false
+    },
+    businessName: {
+        type: String,
+        default: ''
+    },
+    businessDescription: {
+        type: String,
+        default: ''
+    },
+    businessHours: {
+        startHour: { type: Number, default: 9 },
+        endHour: { type: Number, default: 17 },
+        workingDays: { type: [Number], default: [0, 1, 2, 3, 4] } // 0 = Sunday, 6 = Saturday
+    },
+    phoneNumber: {
+        type: String,
+        default: ''
+    },
+    smsNotifications: {
+        enabled: { type: Boolean, default: true },
+        reminderHoursBefore: { type: Number, default: 24 }
+    },
+    profileImage: {
+        type: String,
+        default: ''
+    },
+    cancellationPolicy: {
+        enabled: { type: Boolean, default: true },
+        hoursBefore: { type: Number, default: 24 }
+    },
+    themeSettings: {
+        primaryColor: { type: String, default: '#667eea' },
+        secondaryColor: { type: String, default: '#764ba2' },
+        logoUrl: { type: String, default: '' },
+        coverImage: { type: String, default: '' }
     },
     date: {
         type: Date,

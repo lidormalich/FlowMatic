@@ -1,18 +1,33 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
-const eventSchema = new mongoose.Schema({
-    // title: {
-    //     type: String,
-    //     required: true,
-    // },
-    createdAt: {
-    type: Date,
-    default: Date.now,
-    required: true,
-},
-    description: {
+const eventSchema = new Schema({
+    businessOwnerId: {
+        type: Schema.Types.ObjectId,
+        ref: 'users',
+        required: true
+    },
+    appointmentTypeId: {
+        type: Schema.Types.ObjectId,
+        ref: 'appointmentTypes',
+        required: true
+    },
+    customerName: {
         type: String,
         required: true,
+    },
+    customerEmail: {
+        type: String,
+        default: ''
+    },
+    customerPhone: {
+        type: String,
+        required: true,
+    },
+    customerId: {
+        type: Schema.Types.ObjectId,
+        ref: 'users',
+        default: null
     },
     date: {
         type: Date,
@@ -26,22 +41,57 @@ const eventSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    duration: {
+        type: Number, // in minutes
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'confirmed', 'cancelled', 'completed', 'no_show'],
+        default: 'pending'
+    },
+    description: {
+        type: String,
+        default: '',
+    },
     location: {
         type: String,
-        required: true,
+        default: '',
     },
-    customerName: {
-        type: String,
-        required: true,
-    },
-    customerPhone: {
+    service: {
         type: String,
         required: true,
     },
     services: {
         type: [String],
-        required: true,
+        default: []
     },
+    price: {
+        type: Number,
+        default: 0
+    },
+    smsSent: {
+        type: Boolean,
+        default: false
+    },
+    smsReminderSent: {
+        type: Boolean,
+        default: false
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now,
+    }
+});
+
+// Update the updatedAt timestamp before saving
+eventSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    next();
 });
 
 const Event = mongoose.model('Event', eventSchema);
