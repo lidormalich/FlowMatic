@@ -129,6 +129,7 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
 router.get('/stats', passport.authenticate('jwt', { session: false }), async (req, res) => {
   try {
     const businessOwnerId = req.user.id;
+    console.log(`[STATS] Fetching stats for Owner: ${businessOwnerId} (Name: ${req.user.name})`);
 
     // Get today's date range
     const todayStart = moment().startOf('day').toDate();
@@ -216,6 +217,7 @@ router.get('/stats', passport.authenticate('jwt', { session: false }), async (re
 // GET /api/appointments - Get all appointments for authenticated user
 router.get('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
   try {
+    console.log(`[LIST] Fetching appointments for Owner: ${req.user.id}`);
     const appointments = await Event.find({ businessOwnerId: req.user.id })
       .populate('appointmentTypeId')
       .sort({ date: -1, startTime: 1 });
@@ -288,16 +290,20 @@ router.post('/public/:username', async (req, res) => {
 
     const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId } = value;
 
-    // Find business owner
+    // Find business owner (case-insensitive)
     const owner = await User.findOne({
-      username: req.params.username,
+      username: { $regex: new RegExp(`^${req.params.username}$`, 'i') },
       isActive: true,
       role: { $in: ['business_owner', 'admin'] }
     });
 
     if (!owner) {
+      console.log(`[BOOKING] FAILED: Owner "${req.params.username}" not found.`);
       return res.status(404).json({ message: 'עסק לא נמצא' });
     }
+
+    console.log(`[BOOKING] Found Owner: ${owner.username} (${owner._id})`);
+    console.log(`[BOOKING] Customer Info: Name=${customerName}, ID=${customerId || 'guest'}`);
 
     // Get appointment type
     const appointmentType = await AppointmentType.findOne({
@@ -340,6 +346,7 @@ router.post('/public/:username', async (req, res) => {
     });
 
     await newAppointment.save();
+    console.log(`[BOOKING] SUCCESS: Saved appointment ${newAppointment._id} for Owner ${owner._id}`);
 
     // Send SMS confirmation if enabled and user has credits
     if (owner.smsNotifications?.enabled && owner.credits >= 2) {
