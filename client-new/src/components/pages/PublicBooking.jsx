@@ -43,6 +43,8 @@ const PublicBooking = () => {
       fetchAvailableTimes();
       if (businessOwner.showHebrewDate) {
         setHebrewDate(formatHebrewDate(new Date(formData.date)));
+      } else {
+        setHebrewDate(''); // Ensure it's cleared if setting is disabled
       }
     }
   }, [formData.date, selectedType, businessOwner]);
@@ -50,7 +52,14 @@ const PublicBooking = () => {
   const fetchBusinessOwner = async () => {
     try {
       const userRes = await axios.get(`/api/users/public/${username}`);
-      setBusinessOwner(userRes.data);
+      const owner = userRes.data;
+      setBusinessOwner(owner);
+
+      // Inject theme colors
+      if (owner.themeSettings) {
+        document.documentElement.style.setProperty('--primary-color', owner.themeSettings.primaryColor || '#6366f1');
+        document.documentElement.style.setProperty('--secondary-color', owner.themeSettings.secondaryColor || '#a855f7');
+      }
 
       const typesRes = await axios.get(`/api/appointment-types/user/${username}`);
       setAppointmentTypes(typesRes.data);
@@ -171,7 +180,16 @@ const PublicBooking = () => {
   return (
     <div className="public-booking-page">
       <div className="booking-card">
-        <h1 className="page-title">הזמנה פתוחה</h1>
+        <div className="booking-header">
+          {businessOwner?.themeSettings?.logoUrl ? (
+            <img src={businessOwner.themeSettings.logoUrl} alt={businessOwner.businessName} className="business-logo-lg" />
+          ) : (
+            <h1 className="page-title">{businessOwner?.businessName || 'הזמנה פתוחה'}</h1>
+          )}
+          {businessOwner?.businessDescription && (
+            <p className="business-desc-small">{businessOwner.businessDescription}</p>
+          )}
+        </div>
 
         {step < 4 && (
           <div className="steps-wrapper">
