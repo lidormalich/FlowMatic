@@ -26,6 +26,7 @@ import Reports from './components/pages/Reports';
 import Staff from './components/pages/Staff';
 import Waitlist from './components/pages/Waitlist';
 import Templates from './components/pages/Templates';
+import MyAppointments from './components/pages/MyAppointments';
 import NotFound from './components/pages/NotFound';
 
 import './App.css';
@@ -126,6 +127,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Templates />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/my-appointments"
+                element={
+                  <PrivateRoute>
+                    <MyAppointments />
                   </PrivateRoute>
                 }
               />

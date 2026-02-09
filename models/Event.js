@@ -89,9 +89,8 @@ const eventSchema = new Schema({
 });
 
 // Update the updatedAt timestamp before saving
-eventSchema.pre('save', function(next) {
+eventSchema.pre('save', function() {
     this.updatedAt = Date.now();
-    next();
 });
 
 const Event = mongoose.model('Event', eventSchema);
