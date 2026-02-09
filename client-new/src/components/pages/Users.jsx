@@ -57,8 +57,11 @@ const Users = () => {
       }
       updateUser({ id: editingUser._id, data: updateData });
     } else {
-      // Create new user
-      createUser(formData);
+      // Create new user - send password twice for validation
+      createUser({
+        ...formData,
+        password2: formData.password
+      });
     }
 
     setShowModal(false);
@@ -269,13 +272,12 @@ const Users = () => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                            user.isSuspended
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${user.isSuspended
                               ? 'bg-red-100 text-red-700'
                               : user.isActive
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
                         >
                           {user.isSuspended ? 'מושעה' : user.isActive ? 'פעיל' : 'לא פעיל'}
                         </span>
@@ -294,11 +296,10 @@ const Users = () => {
                           </button>
                           <button
                             onClick={() => handleSuspend(user._id, user.isSuspended)}
-                            className={`px-3 py-1 rounded-lg transition-colors text-sm font-semibold ${
-                              user.isSuspended
+                            className={`px-3 py-1 rounded-lg transition-colors text-sm font-semibold ${user.isSuspended
                                 ? 'bg-green-50 text-green-600 hover:bg-green-100'
                                 : 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
-                            }`}
+                              }`}
                             title={user.isSuspended ? 'הפעל' : 'השעה'}
                           >
                             {user.isSuspended ? '✓' : '⏸️'}

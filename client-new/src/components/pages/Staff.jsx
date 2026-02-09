@@ -29,8 +29,8 @@ const Staff = () => {
                 staffApi.getAll(),
                 appointmentTypesApi.getAll()
             ]);
-            setStaff(staffData);
-            setServices(servicesData);
+            setStaff(Array.isArray(staffData) ? staffData : []);
+            setServices(Array.isArray(servicesData) ? servicesData : []);
         } catch (error) {
             console.error('Error fetching staff data:', error);
             toast.error('שגיאה בטעינת נתונים');
@@ -263,8 +263,8 @@ const Staff = () => {
                                             key={service._id}
                                             onClick={() => handleServiceToggle(service._id)}
                                             className={`cursor-pointer p-2 rounded-lg border text-right transition-colors ${formData.services.includes(service._id)
-                                                    ? 'bg-primary/10 border-primary text-primary'
-                                                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                ? 'bg-primary/10 border-primary text-primary'
+                                                : 'bg-white border-gray-200 hover:bg-gray-50'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-2">

@@ -16,7 +16,7 @@ const Templates = () => {
         try {
             setLoading(true);
             const data = await templatesApi.getAll();
-            setTemplates(data);
+            setTemplates(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Error fetching templates:', error);
             toast.error('שגיאה בטעינת תבניות');

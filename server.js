@@ -11,6 +11,9 @@ const appointments = require('./routes/api/appointments');
 const auth = require('./routes/api/auth');
 const clients = require('./routes/api/clients');
 const reports = require('./routes/api/reports');
+const staff = require('./routes/api/staff');
+const templates = require('./routes/api/templates');
+const waitlist = require('./routes/api/waitlist');
 require('dotenv').config();
 
 require('./config/passport')(passport);
@@ -63,6 +66,9 @@ app.use('/api/appointments', appointments);
 app.use('/api/auth', auth);
 app.use('/api/clients', clients);
 app.use('/api/reports', reports);
+app.use('/api/staff', staff);
+app.use('/api/templates', templates);
+app.use('/api/waitlist', waitlist);
 
 app.use(express.static(path.join(__dirname, 'client-new/build')));
 
