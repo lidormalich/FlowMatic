@@ -12,71 +12,191 @@ const BUFFER_MINUTES = 5; // מרווח ביטחון בין תורים
 
 // Joi Validation Schema
 const appointmentValidation = Joi.object({
-  appointmentTypeId: Joi.string().required(),
+  appointmentTypeId: Joi.string().optional().allow(null, ''),
   customerName: Joi.string().min(2).max(100).required(),
-  customerPhone: Joi.string().pattern(/^05\d{8}$/).required(),
+  customerPhone: Joi.string().pattern(/^05\d{8}$/).optional().allow(''),
   customerEmail: Joi.string().email().optional().allow(''),
-  date: Joi.date().min('now').required(),
+  date: Joi.date().min('2000-01-01').required(), // Relaxed date check
   startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
-  description: Joi.string().optional().allow('')
+  description: Joi.string().optional().allow(''),
+  status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed', 'no_show', 'blocked').optional(),
+  duration: Joi.number().optional(),
+  service: Joi.string().required(),
+  price: Joi.number().optional()
 });
 
 // Helper: Calculate Available Slots with Buffer
 async function calculateAvailableSlots(businessOwnerId, date, duration) {
-  const owner = await User.findById(businessOwnerId);
-  if (!owner) throw new Error('Business owner not found');
+  try {
+    const owner = await User.findById(businessOwnerId);
+    if (!owner) throw new Error('Business owner not found');
 
-  const { startHour, endHour, workingDays } = owner.businessHours;
+    const businessHours = owner.businessHours || { startHour: 9, endHour: 17, workingDays: [0, 1, 2, 3, 4] };
+    const { startHour, endHour, workingDays } = businessHours;
 
-  // Check if date is a working day
-  const dayOfWeek = moment(date).day();
-  if (!workingDays.includes(dayOfWeek)) {
-    return []; // Not a working day
-  }
+    console.log(`--- Availability Check: ${owner.username} ---`);
+    console.log(`Date: ${date}, Duration: ${duration}`);
+    console.log(`Config: Start: ${startHour}:00, End: ${endHour}:00, Days: ${workingDays}`);
 
-  // Get all existing appointments for this date
-  const appointments = await Event.find({
-    businessOwnerId,
-    date: {
-      $gte: moment(date).startOf('day').toDate(),
-      $lte: moment(date).endOf('day').toDate()
-    },
-    status: { $in: ['pending', 'confirmed'] }
-  }).sort('startTime');
+    const requestedDate = moment(date).startOf('day');
+    const dayOfWeek = requestedDate.day();
+    console.log(`Requested Day of Week: ${dayOfWeek}`);
 
-  // Generate time slots (30-minute intervals)
-  const slots = [];
-  let currentTime = moment(date).hour(startHour).minute(0);
-  const endTime = moment(date).hour(endHour).minute(0);
+    // Convert workingDays to numbers just in case they are strings
+    const numericWorkingDays = workingDays.map(d => parseInt(d));
 
-  while (currentTime.clone().add(duration, 'minutes').isSameOrBefore(endTime)) {
-    const slotStart = currentTime.format('HH:mm');
-    const slotEnd = currentTime.clone().add(duration, 'minutes').format('HH:mm');
-
-    // Check overlap with existing appointments (including Buffer)
-    const isAvailable = !appointments.some(apt => {
-      const aptStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
-      const aptEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
-      const slotStartMoment = moment(slotStart, 'HH:mm');
-      const slotEndMoment = moment(slotEnd, 'HH:mm');
-
-      // Check if there's any overlap
-      return (
-        (slotStartMoment.isSameOrAfter(aptStart) && slotStartMoment.isBefore(aptEnd)) ||
-        (slotEndMoment.isAfter(aptStart) && slotEndMoment.isSameOrBefore(aptEnd)) ||
-        (slotStartMoment.isSameOrBefore(aptStart) && slotEndMoment.isSameOrAfter(aptEnd))
-      );
-    });
-
-    if (isAvailable) {
-      slots.push(slotStart);
+    if (!numericWorkingDays.includes(dayOfWeek)) {
+      console.log(`FAILED: Day ${dayOfWeek} is not in working days [${numericWorkingDays}]`);
+      return [];
     }
 
-    currentTime.add(30, 'minutes');
-  }
+    // Get existing appointments
+    const appointments = await Event.find({
+      businessOwnerId,
+      date: {
+        $gte: requestedDate.toDate(),
+        $lte: moment(requestedDate).endOf('day').toDate()
+      },
+      status: { $in: ['pending', 'confirmed', 'blocked'] }
+    }).sort('startTime');
+    console.log(`Found ${appointments.length} existing appointments/blocks`);
 
-  return slots;
+    const slots = [];
+    let currentTime = moment(requestedDate).hour(startHour).minute(0);
+    const endTime = moment(requestedDate).hour(endHour).minute(0);
+    
+    const now = moment();
+    const isToday = requestedDate.isSame(now, 'day');
+
+    while (currentTime.clone().add(duration, 'minutes').isSameOrBefore(endTime)) {
+      const slotStartMoment = currentTime.clone();
+      const slotEndMoment = currentTime.clone().add(duration, 'minutes');
+      const slotStartStr = slotStartMoment.format('HH:mm');
+
+      // 1. Skip if slot is in the past (only for today)
+      if (isToday && slotStartMoment.isBefore(now)) {
+        currentTime.add(30, 'minutes');
+        continue;
+      }
+
+      // 2. Check overlap with existing appointments (including Buffer)
+      const isAvailable = !appointments.some(apt => {
+        const aptStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
+        const aptEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
+        
+        // Define slot boundaries for overlap check
+        const sStart = moment(slotStartStr, 'HH:mm');
+        const sEnd = moment(slotStartStr, 'HH:mm').add(duration, 'minutes');
+
+        return (
+          (sStart.isSameOrAfter(aptStart) && sStart.isBefore(aptEnd)) ||
+          (sEnd.isAfter(aptStart) && sEnd.isSameOrBefore(aptEnd)) ||
+          (sStart.isSameOrBefore(aptStart) && sEnd.isSameOrAfter(aptEnd))
+        );
+      });
+
+      if (isAvailable) {
+        slots.push(slotStartStr);
+      }
+
+      currentTime.add(30, 'minutes');
+    }
+
+    console.log(`Generated ${slots.length} slots for ${owner.username} on ${date}`);
+    return slots;
+  } catch (error) {
+    console.error('Error in calculateAvailableSlots:', error);
+    return [];
+  }
 }
+
+// GET /api/appointments/stats - Get dashboard statistics
+router.get('/stats', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const businessOwnerId = req.user.id;
+
+    // Get today's date range
+    const todayStart = moment().startOf('day').toDate();
+    const todayEnd = moment().endOf('day').toDate();
+
+    // Get this month's date range
+    const monthStart = moment().startOf('month').toDate();
+    const monthEnd = moment().endOf('month').toDate();
+
+    // Get this week's date range
+    const weekStart = moment().startOf('week').toDate();
+    const weekEnd = moment().endOf('week').toDate();
+
+    // Today's appointments count
+    const todayAppointments = await Event.countDocuments({
+      businessOwnerId,
+      date: { $gte: todayStart, $lte: todayEnd },
+      status: { $in: ['pending', 'confirmed'] }
+    });
+
+    // Monthly revenue (completed appointments)
+    const monthlyRevenueResult = await Event.aggregate([
+      {
+        $match: {
+          businessOwnerId: req.user._id || new (require('mongoose').Types.ObjectId)(req.user.id),
+          date: { $gte: monthStart, $lte: monthEnd },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$price' }
+        }
+      }
+    ]);
+    const monthlyRevenue = monthlyRevenueResult[0]?.total || 0;
+
+    // New clients this month (unique phone numbers from this month's appointments)
+    const newClientsResult = await Event.aggregate([
+      {
+        $match: {
+          businessOwnerId: req.user._id || new (require('mongoose').Types.ObjectId)(req.user.id),
+          createdAt: { $gte: monthStart, $lte: monthEnd }
+        }
+      },
+      {
+        $group: {
+          _id: '$customerPhone'
+        }
+      },
+      {
+        $count: 'total'
+      }
+    ]);
+    const newClients = newClientsResult[0]?.total || 0;
+
+    // Upcoming appointments this week
+    const upcomingAppointments = await Event.countDocuments({
+      businessOwnerId,
+      date: { $gte: todayStart, $lte: weekEnd },
+      status: { $in: ['pending', 'confirmed'] }
+    });
+
+    // Total completed this month
+    const completedThisMonth = await Event.countDocuments({
+      businessOwnerId,
+      date: { $gte: monthStart, $lte: monthEnd },
+      status: 'completed'
+    });
+
+    res.json({
+      todayAppointments,
+      monthlyRevenue,
+      newClients,
+      upcomingAppointments,
+      completedThisMonth
+    });
+  } catch (err) {
+    console.error('Stats error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
 
 // GET /api/appointments - Get all appointments for authenticated user
 router.get('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
@@ -206,53 +326,41 @@ router.post('/public/:username', async (req, res) => {
   }
 });
 
-// POST /api/appointments - Create appointment (business owner)
+// POST /api/appointments - Create new appointment (authed)
 router.post('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
   try {
-    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description } = req.body;
-
-    const appointmentType = await AppointmentType.findOne({
-      _id: appointmentTypeId,
-      userId: req.user.id
-    });
-
-    if (!appointmentType) {
-      return res.status(404).json({ message: 'סוג תור לא נמצא' });
+    const { error, value } = appointmentValidation.validate(req.body);
+    if (error) {
+      return res.status(400).json({ message: error.details[0].message });
     }
+
+    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, status, duration, service, price } = value;
 
     // Calculate end time
     const [hours, minutes] = startTime.split(':');
     const startDateTime = moment(date).hour(parseInt(hours)).minute(parseInt(minutes));
-    const endDateTime = startDateTime.clone().add(appointmentType.duration, 'minutes');
+    
+    // Use provided duration or default to 60
+    const finalDuration = duration || 60;
+    const endDateTime = startDateTime.clone().add(finalDuration, 'minutes');
 
     const newAppointment = new Event({
       businessOwnerId: req.user.id,
-      appointmentTypeId,
+      appointmentTypeId: appointmentTypeId || null,
       customerName,
-      customerPhone,
+      customerPhone: customerPhone || '0000000000',
       customerEmail: customerEmail || '',
       date: moment(date).toDate(),
       startTime,
       endTime: endDateTime.format('HH:mm'),
-      duration: appointmentType.duration,
-      service: appointmentType.name,
-      price: appointmentType.price,
+      duration: finalDuration,
+      service,
+      price: price || 0,
       description: description || '',
-      status: 'confirmed'
+      status: status || 'confirmed'
     });
 
     await newAppointment.save();
-
-    // Send SMS confirmation if enabled and user has credits
-    const owner = await User.findById(req.user.id);
-    if (owner.smsNotifications?.enabled && owner.credits >= 2) {
-      try {
-        await sendAppointmentConfirmationSMS(newAppointment, owner);
-      } catch (smsErr) {
-        console.error('SMS Error:', smsErr.message);
-        // Don't fail the appointment creation if SMS fails
-      }
-    }
 
     res.status(201).json({
       message: 'התור נוסף בהצלחה',

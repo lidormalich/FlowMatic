@@ -37,6 +37,7 @@ const AppointmentTypes = () => {
     setFormData({
       name: '',
       description: '',
+      category: '',
       duration: 30,
       price: 0,
       color: '#667eea',
@@ -50,6 +51,7 @@ const AppointmentTypes = () => {
     setFormData({
       name: type.name,
       description: type.description || '',
+      category: type.category || '',
       duration: type.duration,
       price: type.price || 0,
       color: type.color || '#667eea',
@@ -167,8 +169,8 @@ const AppointmentTypes = () => {
                   <h3 className="text-2xl font-bold text-gray-800">{type.name}</h3>
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-semibold ${type.isActive
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-gray-100 text-gray-700'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-700'
                       }`}
                   >
                     {type.isActive ? 'פעיל' : 'מושבת'}
@@ -178,6 +180,12 @@ const AppointmentTypes = () => {
                 {/* Description */}
                 {type.description && (
                   <p className="text-gray-600 mb-4 line-clamp-2">{type.description}</p>
+                )}
+
+                {type.category && (
+                  <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded mb-4">
+                    {type.category}
+                  </span>
                 )}
 
                 {/* Info */}
@@ -205,8 +213,8 @@ const AppointmentTypes = () => {
                   <button
                     onClick={() => handleToggleActive(type)}
                     className={`flex-1 font-semibold px-4 py-2 rounded-lg transition-colors ${type.isActive
-                        ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
-                        : 'bg-green-50 text-green-600 hover:bg-green-100'
+                      ? 'bg-yellow-50 text-yellow-600 hover:bg-yellow-100'
+                      : 'bg-green-50 text-green-600 hover:bg-green-100'
                       }`}
                   >
                     {type.isActive ? '⏸️ השבת' : '▶️ הפעל'}
@@ -265,6 +273,21 @@ const AppointmentTypes = () => {
                   rows="3"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
                   placeholder="תיאור קצר של השירות"
+                />
+              </div>
+
+              {/* Category */}
+              <div className="mb-6">
+                <label className="block text-gray-700 font-semibold mb-2 text-right">
+                  קטגוריה
+                </label>
+                <input
+                  type="text"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                  placeholder="לדוגמה: תספורות, צבע, טיפולים"
                 />
               </div>
 
@@ -335,10 +358,10 @@ const AppointmentTypes = () => {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+          </div >
+        </div >
       )}
-    </div>
+    </div >
   );
 };
 

@@ -11,6 +11,12 @@ const Sidebar = () => {
     { path: '/users', label: 'ניהול משתמשים', icon: '👥', roles: ['admin'] },
     { path: '/events', label: 'יומן תורים', icon: '📅', roles: ['admin', 'business_owner'] },
     { path: '/appointment-types', label: 'סוגי תורים', icon: '⚙️', roles: ['admin', 'business_owner'] },
+    { path: '/clients', label: 'לקוחות', icon: '👤', roles: ['admin', 'business_owner'] },
+    { path: '/reports', label: 'דוחות', icon: '📊', roles: ['admin', 'business_owner'] },
+    { path: '/staff', label: 'צוות', icon: '💇', roles: ['admin', 'business_owner'] },
+    { path: '/waitlist', label: 'רשימת המתנה', icon: '⏳', roles: ['admin', 'business_owner'] },
+    { path: '/templates', label: 'תבניות הודעות', icon: '📨', roles: ['admin', 'business_owner'] },
+    { path: '/settings', label: 'הגדרות עסק', icon: '🛠️', roles: ['admin', 'business_owner'] },
   ];
 
   // Filter menu items based on user role
@@ -29,11 +35,10 @@ const Sidebar = () => {
           <Link
             key={item.path}
             to={item.path}
-            className={`flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all text-right flex-row-reverse ${
-              location.pathname === item.path
-                ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-md'
-                : 'text-gray-700 hover:bg-gray-100'
-            }`}
+            className={`flex items-center gap-3 px-4 py-3 mb-2 rounded-lg transition-all text-right flex-row-reverse ${location.pathname === item.path
+              ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-md'
+              : 'text-gray-700 hover:bg-gray-100'
+              }`}
           >
             <span className="text-2xl">{item.icon}</span>
             <span className="font-medium">{item.label}</span>

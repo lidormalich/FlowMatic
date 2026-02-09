@@ -15,6 +15,10 @@ const AppointmentTypeSchema = new Schema({
         type: String,
         default: ''
     },
+    category: {
+        type: String,
+        default: 'General'
+    },
     duration: {
         type: Number, // Duration in minutes
         required: true,

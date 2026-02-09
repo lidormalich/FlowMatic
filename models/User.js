@@ -73,6 +73,14 @@ const UserSchema = new Schema({
         logoUrl: { type: String, default: '' },
         coverImage: { type: String, default: '' }
     },
+    showHebrewDate: {
+        type: Boolean,
+        default: false
+    },
+    businessAddress: {
+        type: String,
+        default: ''
+    },
     date: {
         type: Date,
         default: Date.now

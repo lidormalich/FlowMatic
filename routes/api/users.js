@@ -27,6 +27,23 @@ router.get('/', passport.authenticate('jwt', { session: false }), async (req, re
     }
 });
 
+// @route   GET api/users/profile
+// @desc    Get current user's profile
+// @access  Private
+router.get('/profile', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'משתמש לא נמצא' });
+        }
+        res.json(user);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
+
+
 // @route   GET api/users/:id
 // @desc    Get single user
 // @access  Private
@@ -58,12 +75,60 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
             return res.status(404).json({ message: 'משתמש לא נמצא' });
         }
 
-        // Update fields
+        // Update basic fields
         if (req.body.name) user.name = req.body.name;
         if (req.body.email) user.email = req.body.email;
         if (req.body.username) user.username = req.body.username;
         if (req.body.businessName !== undefined) user.businessName = req.body.businessName;
+        if (req.body.businessDescription !== undefined) user.businessDescription = req.body.businessDescription;
         if (req.body.phoneNumber !== undefined) user.phoneNumber = req.body.phoneNumber;
+        
+        // Update nested objects safely
+        if (req.body.businessHours) {
+            user.businessHours = {
+                ...user.businessHours,
+                ...req.body.businessHours
+            };
+        }
+
+        if (req.body.preferences) {
+            user.preferences = {
+                ...user.preferences,
+                ...req.body.preferences
+            };
+        }
+
+        // Business Settings fields
+        if (req.body.businessDescription !== undefined) user.businessDescription = req.body.businessDescription;
+        if (req.body.businessAddress !== undefined) user.businessAddress = req.body.businessAddress;
+        if (req.body.showHebrewDate !== undefined) user.showHebrewDate = req.body.showHebrewDate;
+
+        // Business Hours (working hours per day)
+        if (req.body.businessHours) {
+            if (req.body.businessHours.startHour !== undefined) user.businessHours.startHour = req.body.businessHours.startHour;
+            if (req.body.businessHours.endHour !== undefined) user.businessHours.endHour = req.body.businessHours.endHour;
+            if (req.body.businessHours.workingDays !== undefined) user.businessHours.workingDays = req.body.businessHours.workingDays;
+        }
+
+        // SMS Notifications settings
+        if (req.body.smsNotifications) {
+            if (req.body.smsNotifications.enabled !== undefined) user.smsNotifications.enabled = req.body.smsNotifications.enabled;
+            if (req.body.smsNotifications.reminderHoursBefore !== undefined) user.smsNotifications.reminderHoursBefore = req.body.smsNotifications.reminderHoursBefore;
+        }
+
+        // Cancellation Policy
+        if (req.body.cancellationPolicy) {
+            if (req.body.cancellationPolicy.enabled !== undefined) user.cancellationPolicy.enabled = req.body.cancellationPolicy.enabled;
+            if (req.body.cancellationPolicy.hoursBefore !== undefined) user.cancellationPolicy.hoursBefore = req.body.cancellationPolicy.hoursBefore;
+        }
+
+        // Theme Settings (logo, colors)
+        if (req.body.themeSettings) {
+            if (req.body.themeSettings.primaryColor !== undefined) user.themeSettings.primaryColor = req.body.themeSettings.primaryColor;
+            if (req.body.themeSettings.secondaryColor !== undefined) user.themeSettings.secondaryColor = req.body.themeSettings.secondaryColor;
+            if (req.body.themeSettings.logoUrl !== undefined) user.themeSettings.logoUrl = req.body.themeSettings.logoUrl;
+            if (req.body.themeSettings.coverImage !== undefined) user.themeSettings.coverImage = req.body.themeSettings.coverImage;
+        }
 
         // Only admin can update role and credits
         if (req.user.role === 'admin') {

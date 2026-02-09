@@ -55,6 +55,10 @@ export const appointmentsApi = {
     const response = await api.get('/appointments');
     return response.data;
   },
+  getStats: async () => {
+    const response = await api.get('/appointments/stats');
+    return response.data;
+  },
   getAvailable: async (username, date, duration) => {
     const response = await api.get(`/appointments/available/${username}`, { params: { date, duration } });
     return response.data;
@@ -100,6 +104,84 @@ export const appointmentTypesApi = {
   }
 };
 
+export const reportsApi = {
+  getRevenue: (params) => api.get('/reports/revenue', { params }),
+  exportAppointments: () => api.get('/reports/export/appointments', { responseType: 'blob' }),
+  exportClients: () => api.get('/reports/export/clients', { responseType: 'blob' }),
+};
+
+export const businessApi = {
+  getPublicProfile: (username) => api.get(`/users/public/${username}`),
+};
+
+export const clientsApi = {
+  getAll: async () => {
+    const response = await api.get('/clients');
+    return response.data;
+  },
+  search: async (query) => {
+    const response = await api.get(`/clients?search=${query}`);
+    return response.data;
+  },
+  getById: async (id) => {
+    const response = await api.get(`/clients/${id}`);
+    return response.data;
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/clients/${id}`, data);
+    return response.data;
+  }
+};
+
+export const staffApi = {
+  getAll: async () => {
+    const response = await api.get('/staff');
+    return response.data;
+  },
+  create: async (data) => {
+    const response = await api.post('/staff', data);
+    return response.data;
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/staff/${id}`, data);
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/staff/${id}`);
+    return response.data;
+  }
+};
+
+export const waitlistApi = {
+  getAll: async () => {
+    const response = await api.get('/waitlist');
+    return response.data;
+  },
+  joinPublic: async (username, data) => {
+    const response = await api.post(`/waitlist/public/${username}`, data);
+    return response.data;
+  },
+  updateStatus: async (id, status) => {
+    const response = await api.put(`/waitlist/${id}`, { status });
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/waitlist/${id}`);
+    return response.data;
+  }
+};
+
+export const templatesApi = {
+  getAll: async () => {
+    const response = await api.get('/templates');
+    return response.data;
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/templates/${id}`, data);
+    return response.data;
+  }
+};
+
 export const usersApi = {
   // Public endpoints
   getProfile: async (username) => {
@@ -114,6 +196,10 @@ export const usersApi = {
   // Admin endpoints (require authentication)
   getAll: async () => {
     const response = await api.get('/users');
+    return response.data;
+  },
+  search: async (query) => {
+    const response = await api.get(`/users?search=${query}`);
     return response.data;
   },
   getById: async (id) => {

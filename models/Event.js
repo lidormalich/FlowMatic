@@ -10,7 +10,7 @@ const eventSchema = new Schema({
     appointmentTypeId: {
         type: Schema.Types.ObjectId,
         ref: 'appointmentTypes',
-        required: true
+        required: false // Optional for blocked times
     },
     customerName: {
         type: String,
@@ -47,7 +47,7 @@ const eventSchema = new Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'cancelled', 'completed', 'no_show'],
+        enum: ['pending', 'confirmed', 'cancelled', 'completed', 'no_show', 'blocked'],
         default: 'pending'
     },
     description: {

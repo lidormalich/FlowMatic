@@ -20,6 +20,12 @@ import Events from './components/pages/Events';
 import AppointmentTypes from './components/pages/AppointmentTypes';
 import AppointmentScheduler from './components/pages/AppointmentScheduler';
 import PublicBooking from './components/pages/PublicBooking';
+import BusinessSettings from './components/pages/BusinessSettings';
+import Clients from './components/pages/Clients';
+import Reports from './components/pages/Reports';
+import Staff from './components/pages/Staff';
+import Waitlist from './components/pages/Waitlist';
+import Templates from './components/pages/Templates';
 import NotFound from './components/pages/NotFound';
 
 import './App.css';
@@ -40,8 +46,8 @@ function App() {
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password/:token" element={<ResetPassword />} />
               <Route path="/AppointmentScheduler" element={<AppointmentScheduler />} />
-              <Route path="/users/:username" element={<PublicBooking />} />
-              <Route path="/:username" element={<PublicBooking />} />
+              <Route path="/book/:username" element={<PublicBooking />} />
+              {/* <Route path="/:username" element={<PublicBooking />} /> */}
 
               <Route
                 path="/dashboard"
@@ -72,6 +78,54 @@ function App() {
                 element={
                   <PrivateRoute>
                     <AppointmentTypes />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <PrivateRoute>
+                    <BusinessSettings />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/clients"
+                element={
+                  <PrivateRoute>
+                    <Clients />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <PrivateRoute>
+                    <Reports />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/staff"
+                element={
+                  <PrivateRoute>
+                    <Staff />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/waitlist"
+                element={
+                  <PrivateRoute>
+                    <Waitlist />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/templates"
+                element={
+                  <PrivateRoute>
+                    <Templates />
                   </PrivateRoute>
                 }
               />
