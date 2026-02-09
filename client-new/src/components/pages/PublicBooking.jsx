@@ -2,24 +2,33 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { HDate } from '@hebcal/core';
+import moment from 'moment';
+import 'moment/locale/he';
 import SkeletonLoader from '../common/SkeletonLoader';
+import { formatHebrewDate } from '../../utils/hebrewDate';
+import './PublicBooking.css';
+
+moment.locale('he');
 
 const PublicBooking = () => {
   const { username } = useParams();
+  const [step, setStep] = useState(1); // 1: Service, 2: Date/Time, 3: Details, 4: Success
+  const [loading, setLoading] = useState(true);
   const [businessOwner, setBusinessOwner] = useState(null);
   const [appointmentTypes, setAppointmentTypes] = useState([]);
   const [selectedType, setSelectedType] = useState(null);
+  const [availableTimes, setAvailableTimes] = useState([]);
+  const [loadingTimes, setLoadingTimes] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
   const [formData, setFormData] = useState({
     customerName: '',
     customerPhone: '',
     customerEmail: '',
-    date: '',
+    date: new Date().toISOString().split('T')[0],
     time: '',
   });
-  const [availableTimes, setAvailableTimes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [bookingLoading, setBookingLoading] = useState(false);
+
   const [hebrewDate, setHebrewDate] = useState('');
 
   useEffect(() => {
@@ -27,32 +36,31 @@ const PublicBooking = () => {
   }, [username]);
 
   useEffect(() => {
-    if (formData.date && selectedType) {
+    if (formData.date && businessOwner && selectedType) {
       fetchAvailableTimes();
-      const date = new Date(formData.date);
-      const hDate = new HDate(date);
-      setHebrewDate(hDate.renderGematriya());
+      if (businessOwner.showHebrewDate) {
+        setHebrewDate(formatHebrewDate(new Date(formData.date)));
+      }
     }
-  }, [formData.date, selectedType]);
+  }, [formData.date, selectedType, businessOwner]);
 
   const fetchBusinessOwner = async () => {
     try {
-      // Fetch business owner details
       const userRes = await axios.get(`/api/users/public/${username}`);
       setBusinessOwner(userRes.data);
 
-      // Fetch appointment types
       const typesRes = await axios.get(`/api/appointment-types/user/${username}`);
       setAppointmentTypes(typesRes.data);
 
       setLoading(false);
     } catch (err) {
-      toast.error('לא נמצא עסק עם שם משתמש זה');
+      toast.error('העסק לא נמצא');
       setLoading(false);
     }
   };
 
   const fetchAvailableTimes = async () => {
+    setLoadingTimes(true);
     try {
       const res = await axios.get(`/api/appointments/available/${username}`, {
         params: {
@@ -60,58 +68,47 @@ const PublicBooking = () => {
           duration: selectedType?.duration || 60,
         },
       });
-      setAvailableTimes(res.data.times || generateDefaultTimes());
+      setAvailableTimes(res.data.times || []);
     } catch (err) {
-      setAvailableTimes(generateDefaultTimes());
+      setAvailableTimes([]);
+    } finally {
+      setLoadingTimes(false);
     }
   };
 
-  const generateDefaultTimes = () => {
-    if (!businessOwner) return [];
-
-    const times = [];
-    const startHour = businessOwner.businessHours?.startHour || 9;
-    const endHour = businessOwner.businessHours?.endHour || 17;
-
-    for (let hour = startHour; hour < endHour; hour++) {
-      times.push(`${hour.toString().padStart(2, '0')}:00`);
-      times.push(`${hour.toString().padStart(2, '0')}:30`);
-    }
-    return times;
-  };
-
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleTypeSelect = (type) => {
+  const handleServiceSelect = (type) => {
     setSelectedType(type);
-    setFormData({ ...formData, time: '' }); // Reset time when type changes
+    setStep(2);
+  };
+
+  const handleDateChange = (e) => {
+    setFormData({ ...formData, date: e.target.value, time: '' });
+  };
+
+  const handleTimeSelect = (time) => {
+    setFormData({ ...formData, time });
+  };
+
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!selectedType) {
-      toast.error('נא לבחור סוג תור');
+    if (!formData.time) {
+      toast.error('נא לבחור שעה');
       return;
     }
 
     setBookingLoading(true);
-
     try {
-      const dateTime = new Date(`${formData.date}T${formData.time}`);
-
       const appointmentData = {
         businessOwnerId: businessOwner._id,
         appointmentTypeId: selectedType._id,
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerEmail: formData.customerEmail,
-        date: dateTime,
+        date: formData.date,
         startTime: formData.time,
         duration: selectedType.duration,
         service: selectedType.name,
@@ -119,19 +116,7 @@ const PublicBooking = () => {
       };
 
       await axios.post(`/api/appointments/public/${username}`, appointmentData);
-
-      toast.success('התור נקבע בהצלחה! 🎉');
-
-      // Reset form
-      setFormData({
-        customerName: '',
-        customerPhone: '',
-        customerEmail: '',
-        date: '',
-        time: '',
-      });
-      setSelectedType(null);
-      setHebrewDate('');
+      setStep(4);
     } catch (err) {
       toast.error(err.response?.data?.message || 'שגיאה בקביעת התור');
     } finally {
@@ -141,146 +126,215 @@ const PublicBooking = () => {
 
   if (loading) {
     return (
-      <div className="public-booking-container p-4">
-        <SkeletonLoader type="card" count={3} />
+      <div className="public-booking-page">
+        <div className="booking-card p-12">
+          <SkeletonLoader type="card" count={3} />
+        </div>
       </div>
     );
   }
 
   if (!businessOwner) {
     return (
-      <div className="public-booking-container">
-        <div className="error-message">העסק לא נמצא</div>
+      <div className="public-booking-page">
+        <div className="booking-card p-12 text-center">
+          <h2 className="text-2xl font-bold text-red-500">העסק לא נמצא</h2>
+          <p className="text-gray-600">בדוק את הקישור ונסה שוב</p>
+        </div>
       </div>
     );
   }
 
-  const today = new Date().toISOString().split('T')[0];
-
   return (
-    <div className="public-booking-container">
-      <div className="public-booking-header">
-        <h1>{businessOwner.businessName || businessOwner.name}</h1>
-        {businessOwner.businessDescription && (
-          <p className="business-description">{businessOwner.businessDescription}</p>
+    <div className="public-booking-page">
+      <div className="booking-card">
+        {step < 4 && (
+          <>
+            <div className="booking-header">
+              <h1>{businessOwner.businessName || businessOwner.name}</h1>
+              <p>{businessOwner.businessDescription || 'קביעת תור בקלות ובמהירות'}</p>
+            </div>
+
+            <div className="booking-steps">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className={`step-dot ${step === s ? 'active' : ''}`} />
+              ))}
+            </div>
+          </>
         )}
-        {businessOwner.phoneNumber && (
-          <p className="business-contact">📞 {businessOwner.phoneNumber}</p>
-        )}
-      </div>
 
-      <div className="booking-content">
-        {/* Appointment Types Selection */}
-        <div className="appointment-types-section">
-          <h2>בחר סוג תור</h2>
-          <div className="appointment-types-grid">
-            {appointmentTypes.map((type) => (
-              <div
-                key={type._id}
-                className={`appointment-type-card ${selectedType?._id === type._id ? 'selected' : ''}`}
-                onClick={() => handleTypeSelect(type)}
-                style={{ '--type-color': type.color }}
-              >
-                <h3>{type.name}</h3>
-                {type.description && <p className="type-description">{type.description}</p>}
-                <div className="type-details">
-                  <span className="type-duration">⏱️ {type.duration} דקות</span>
-                  {type.price > 0 && <span className="type-price">💰 ₪{type.price}</span>}
-                </div>
+        <div className="booking-body">
+          {step === 1 && (
+            <div className="service-selection">
+              <h2 className="text-xl font-bold mb-6 text-center">איזה שירות תרצה לקבל?</h2>
+              <div className="service-grid">
+                {appointmentTypes.map((type) => (
+                  <div
+                    key={type._id}
+                    className="service-card"
+                    onClick={() => handleServiceSelect(type)}
+                  >
+                    <div className="service-info text-right">
+                      <h3>{type.name}</h3>
+                      {type.description && <p>{type.description}</p>}
+                    </div>
+                    <div className="service-meta">
+                      <span className="service-price">₪{type.price}</span>
+                      <span className="service-duration">{type.duration} דק׳</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
+          )}
 
-        {/* Booking Form */}
-        {selectedType && (
-          <div className="booking-form-section">
-            <h2>פרטים לקביעת תור</h2>
-            <form onSubmit={handleSubmit} className="booking-form">
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="customerName">שם מלא *</label>
-                  <input
-                    type="text"
-                    id="customerName"
-                    name="customerName"
-                    value={formData.customerName}
-                    onChange={handleChange}
-                    placeholder="הכנס את שמך המלא"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="customerPhone">טלפון *</label>
-                  <input
-                    type="tel"
-                    id="customerPhone"
-                    name="customerPhone"
-                    value={formData.customerPhone}
-                    onChange={handleChange}
-                    placeholder="050-1234567"
-                    required
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="customerEmail">אימייל (אופציונלי)</label>
-                <input
-                  type="email"
-                  id="customerEmail"
-                  name="customerEmail"
-                  value={formData.customerEmail}
-                  onChange={handleChange}
-                  placeholder="your@email.com"
-                  dir="ltr"
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="date">תאריך *</label>
+          {step === 2 && (
+            <div className="time-selection">
+              <h2 className="text-xl font-bold mb-6 text-center">מתי תרצה להגיע?</h2>
+              <div className="calendar-container">
+                <div>
+                  <label className="form-label-custom text-right">בחר תאריך</label>
                   <input
                     type="date"
-                    id="date"
-                    name="date"
+                    className="date-input-custom"
                     value={formData.date}
-                    onChange={handleChange}
-                    min={today}
-                    required
+                    onChange={handleDateChange}
+                    min={new Date().toISOString().split('T')[0]}
                   />
                   {hebrewDate && (
-                    <div className="hebrew-date">תאריך עברי: {hebrewDate}</div>
+                    <p className="text-sm text-primary mt-2 text-right font-medium">
+                      🇮🇱 {hebrewDate}
+                    </p>
                   )}
                 </div>
 
-                {formData.date && availableTimes.length > 0 && (
-                  <div className="form-group">
-                    <label htmlFor="time">שעה *</label>
-                    <select
-                      id="time"
-                      name="time"
-                      value={formData.time}
-                      onChange={handleChange}
-                      required
-                    >
-                      <option value="">בחר שעה</option>
+                <div>
+                  <label className="form-label-custom text-right">בחר שעה פנויה</label>
+                  {loadingTimes ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                      <p className="text-sm text-gray-500 mt-2">מחפש תורים פנויים...</p>
+                    </div>
+                  ) : availableTimes.length > 0 ? (
+                    <div className="slots-grid" dir="ltr">
                       {availableTimes.map((time) => (
-                        <option key={time} value={time}>
+                        <button
+                          key={time}
+                          className={`slot-button ${formData.time === time ? 'selected' : ''}`}
+                          onClick={() => handleTimeSelect(time)}
+                        >
                           {time}
-                        </option>
+                        </button>
                       ))}
-                    </select>
-                  </div>
-                )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-2xl">
+                      <p className="text-gray-500 font-medium">אין תורים פנויים לתאריך זה</p>
+                      <p className="text-sm text-gray-400">נסו לבחור תאריך אחר או שירות אחר</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <form onSubmit={handleSubmit} className="details-form">
+              <h2 className="text-xl font-bold mb-6 text-center">פרטים אחרונים וסיימנו</h2>
+              <div className="form-group-custom">
+                <label className="form-label-custom text-right">שם מלא *</label>
+                <input
+                  type="text"
+                  name="customerName"
+                  required
+                  className="form-input-custom text-right"
+                  placeholder="הכניסו את שמכם"
+                  value={formData.customerName}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div className="form-group-custom">
+                <label className="form-label-custom text-right">טלפון *</label>
+                <input
+                  type="tel"
+                  name="customerPhone"
+                  required
+                  className="form-input-custom"
+                  dir="ltr"
+                  placeholder="05X-XXXXXXX"
+                  value={formData.customerPhone}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div className="form-group-custom">
+                <label className="form-label-custom text-right">אימייל (אופציונלי)</label>
+                <input
+                  type="email"
+                  name="customerEmail"
+                  className="form-input-custom"
+                  dir="ltr"
+                  placeholder="name@example.com"
+                  value={formData.customerEmail}
+                  onChange={handleInputChange}
+                />
               </div>
 
-              <button type="submit" className="submit-button" disabled={bookingLoading}>
-                {bookingLoading ? 'קובע תור...' : 'קבע תור'}
-              </button>
+              <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 mb-6 text-right">
+                <p className="font-bold text-primary mb-1">סיכום התור:</p>
+                <p className="text-sm text-gray-700">
+                  {selectedType?.name} עם {businessOwner.name}
+                </p>
+                <p className="text-sm text-gray-700">
+                  בתאריך {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}
+                </p>
+              </div>
             </form>
+          )}
+
+          {step === 4 && (
+            <div className="success-screen">
+              <span className="success-icon">🎉</span>
+              <h2>התור נקבע בהצלחה!</h2>
+              <p>
+                שלחנו לך אישור לטלפון {formData.customerPhone}.<br />
+                נשמח לראות אותך בתאריך {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}.
+              </p>
+              <button
+                className="btn-primary-custom w-full"
+                onClick={() => window.location.reload()}
+              >
+                קביעת תור נוסף
+              </button>
+            </div>
+          )}
+        </div>
+
+        {step > 1 && step < 4 && (
+          <div className="booking-footer">
+            {step === 2 && (
+              <button
+                className="btn-primary-custom"
+                disabled={!formData.time}
+                onClick={() => setStep(3)}
+              >
+                המשך לפרטים
+              </button>
+            )}
+            {step === 3 && (
+              <button
+                className="btn-primary-custom"
+                onClick={handleSubmit}
+                disabled={bookingLoading || !formData.customerName || !formData.customerPhone}
+              >
+                {bookingLoading ? 'מעבד...' : 'אשר וקבע תור'}
+              </button>
+            )}
+            <button
+              className="btn-secondary-custom"
+              onClick={() => setStep(step - 1)}
+            >
+              חזור
+            </button>
           </div>
         )}
       </div>

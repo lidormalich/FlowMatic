@@ -1,9 +1,26 @@
 import { Link } from 'react-router-dom';
-import { useContext } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import api from '../../services/api';
 
 const Dashboard = () => {
   const { user } = useContext(AuthContext);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const response = await api.get('/appointments/stats');
+      setStats(response.data);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+    setLoading(false);
+  };
 
   const cards = [
     {
@@ -31,10 +48,18 @@ const Dashboard = () => {
       roles: ['admin', 'business_owner'],
     },
     {
+      title: 'הגדרות עסק',
+      description: 'נהל את פרטי העסק והגדרות',
+      icon: '🛠️',
+      link: '/settings',
+      color: 'from-orange-500 to-orange-600',
+      roles: ['business_owner'],
+    },
+    {
       title: 'הקישור הציבורי שלי',
       description: 'דף קביעת תורים ללקוחות',
       icon: '🔗',
-      link: `/users/${user?.username}`,
+      link: `/book/${user?.username}`,
       color: 'from-pink-500 to-pink-600',
       roles: ['business_owner'],
     },
@@ -43,6 +68,22 @@ const Dashboard = () => {
   // Filter cards based on user role
   const filteredCards = cards.filter(card =>
     !card.roles || card.roles.includes(user?.role)
+  );
+
+  const StatCard = ({ icon, value, label, color }) => (
+    <div className={`text-center bg-white/10 rounded-xl p-5 backdrop-blur-sm hover:bg-white/20 transition-all duration-300`}>
+      <div className="text-3xl mb-2">{icon}</div>
+      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="text-sm text-white/80">{label}</div>
+    </div>
+  );
+
+  const StatCardSkeleton = () => (
+    <div className="text-center bg-white/10 rounded-xl p-5 backdrop-blur-sm animate-pulse">
+      <div className="w-10 h-10 bg-white/20 rounded-full mx-auto mb-2"></div>
+      <div className="w-16 h-8 bg-white/20 rounded mx-auto mb-1"></div>
+      <div className="w-20 h-4 bg-white/20 rounded mx-auto"></div>
+    </div>
   );
 
   return (
@@ -56,6 +97,78 @@ const Dashboard = () => {
           ברוך הבא למערכת ניהול התורים FlowMatic
         </p>
       </div>
+
+      {/* Stats Section - For Business Owners */}
+      {user?.role === 'business_owner' && (
+        <div className="bg-gradient-to-r from-primary to-secondary rounded-2xl shadow-xl p-8 text-white mb-12">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="text-center md:text-right">
+              <div className="text-5xl mb-3">📊</div>
+              <h4 className="text-2xl font-bold mb-2">סקירה כללית</h4>
+              <p className="text-white/90">נתונים עדכניים על העסק שלך</p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 flex-1">
+              {loading ? (
+                <>
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                  <StatCardSkeleton />
+                </>
+              ) : (
+                <>
+                  <StatCard
+                    icon="📅"
+                    value={stats?.todayAppointments || 0}
+                    label="תורים היום"
+                  />
+                  <StatCard
+                    icon="📆"
+                    value={stats?.upcomingAppointments || 0}
+                    label="תורים השבוע"
+                  />
+                  <StatCard
+                    icon="💰"
+                    value={`₪${stats?.monthlyRevenue || 0}`}
+                    label="הכנסה החודש"
+                  />
+                  <StatCard
+                    icon="👥"
+                    value={stats?.newClients || 0}
+                    label="לקוחות חדשים"
+                  />
+                  <StatCard
+                    icon="✅"
+                    value={stats?.completedThisMonth || 0}
+                    label="הושלמו החודש"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Credits Info for Business Owner */}
+      {user?.role === 'business_owner' && (
+        <div className="bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl shadow-lg p-6 text-white mb-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="text-4xl">💳</div>
+              <div>
+                <h4 className="text-xl font-bold">יתרת קרדיטים</h4>
+                <p className="text-white/90">לשליחת הודעות SMS ללקוחות</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-4xl font-bold">{user?.credits || 0}</div>
+              <div className="text-sm text-white/80">קרדיטים זמינים</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
@@ -106,35 +219,31 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Stats Section */}
-      <div className="bg-gradient-to-r from-primary to-secondary rounded-2xl shadow-xl p-8 text-white">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="text-center md:text-right">
-            <div className="text-5xl mb-3">📊</div>
-            <h4 className="text-2xl font-bold mb-2">סטטיסטיקות</h4>
-            <p className="text-white/90">נתונים עדכניים על המערכת</p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-            <div className="text-center bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-              <div className="text-3xl font-bold">{user?.credits || 0}</div>
-              <div className="text-sm text-white/80">קרדיטים</div>
+      {/* Quick Link for Public Page */}
+      {user?.role === 'business_owner' && user?.username && (
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="text-center md:text-right">
+              <h4 className="text-xl font-bold text-gray-800 mb-1">הקישור הציבורי שלך</h4>
+              <p className="text-gray-600">שתף את הקישור עם לקוחות לקביעת תורים</p>
             </div>
-
-            <div className="text-center bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-              <div className="text-3xl font-bold">✓</div>
-              <div className="text-sm text-white/80">פעיל</div>
-            </div>
-
-            {user?.role === 'business_owner' && user?.username && (
-              <div className="text-center bg-white/10 rounded-lg p-4 backdrop-blur-sm col-span-2 md:col-span-1">
-                <div className="text-xl font-bold truncate">/users/{user.username}</div>
-                <div className="text-sm text-white/80">קישור ציבורי</div>
+            <div className="flex items-center gap-3">
+              <div className="bg-gray-100 px-4 py-2 rounded-lg font-mono text-sm" dir="ltr">
+                {window.location.origin}/book/{user.username}
               </div>
-            )}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/book/${user.username}`);
+                  // Could add toast here
+                }}
+                className="bg-gradient-to-r from-primary to-secondary text-white px-4 py-2 rounded-lg font-semibold hover:shadow-lg transition-all"
+              >
+                📋 העתק
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

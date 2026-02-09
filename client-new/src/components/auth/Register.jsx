@@ -209,13 +209,12 @@ const Register = () => {
                 dir="ltr"
                 pattern="[a-z0-9\-]+"
                 title="רק אותיות אנגליות קטנות, מספרים ומקפים"
-                className={`w-full px-4 py-3 pr-12 border-2 rounded-lg text-left focus:outline-none focus:ring-2 transition-all ${
-                  usernameStatus.available === true
+                className={`w-full px-4 py-3 pr-12 border-2 rounded-lg text-left focus:outline-none focus:ring-2 transition-all ${usernameStatus.available === true
                     ? 'border-green-500 focus:border-green-500 focus:ring-green-200'
                     : usernameStatus.available === false
-                    ? 'border-red-500 focus:border-red-500 focus:ring-red-200'
-                    : 'border-gray-200 focus:border-primary focus:ring-primary/20'
-                }`}
+                      ? 'border-red-500 focus:border-red-500 focus:ring-red-200'
+                      : 'border-gray-200 focus:border-primary focus:ring-primary/20'
+                  }`}
               />
               {/* Status indicator */}
               <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
@@ -232,19 +231,18 @@ const Register = () => {
             </div>
             {/* Status message */}
             {formData.username && usernameStatus.message && (
-              <p className={`mt-2 text-sm font-medium text-center py-2 px-3 rounded-lg ${
-                usernameStatus.available === true
+              <p className={`mt-2 text-sm font-medium text-center py-2 px-3 rounded-lg ${usernameStatus.available === true
                   ? 'text-green-700 bg-green-100'
                   : usernameStatus.available === false
-                  ? 'text-red-700 bg-red-100'
-                  : 'text-gray-700 bg-gray-100'
-              }`}>
+                    ? 'text-red-700 bg-red-100'
+                    : 'text-gray-700 bg-gray-100'
+                }`}>
                 {usernameStatus.message}
               </p>
             )}
             {formData.username && usernameStatus.available === true && (
               <p className="mt-2 text-sm text-primary font-medium text-center bg-primary/10 py-2 px-3 rounded-lg">
-                🔗 הקישור שלך: {window.location.origin}/{formData.username}
+                🔗 הקישור שלך: {window.location.origin}/book/{formData.username}
               </p>
             )}
           </div>

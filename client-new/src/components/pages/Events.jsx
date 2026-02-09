@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/he';
+import { formatHebrewDate } from '../../utils/hebrewDate';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { toast } from 'react-toastify';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../hooks/useAppointments';
-import { appointmentTypesApi } from '../../services/api';
+import { appointmentTypesApi, appointmentsApi, clientsApi, reportsApi } from '../../services/api';
 import SkeletonLoader from '../common/SkeletonLoader';
 
 moment.locale('he');
@@ -37,30 +38,109 @@ const Events = () => {
     queryFn: appointmentTypesApi.getAll
   });
 
+  // Check if Hebrew date should be shown
+  const showHebrewDate = user?.showHebrewDate || false;
+
   const [view, setView] = useState('calendar'); // 'calendar' or 'list'
+  const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
-    appointmentTypeId: '',
-    customerName: '',
-    customerEmail: '',
     customerPhone: '',
     date: '',
     startTime: '',
-    notes: '',
+    description: '',
+    duration: '',
+    price: '',
   });
+  const [clientNotes, setClientNotes] = useState('');
 
-  const appointmentTypes = appointmentTypesData?.data || [];
+  const handlePhoneBlur = async () => {
+    if (formData.customerPhone && formData.customerPhone.length >= 9) {
+      try {
+        const clients = await clientsApi.search(formData.customerPhone);
+        const client = clients.find(c => c.phone.replace(/\D/g, '').includes(formData.customerPhone.replace(/\D/g, '')));
+
+        if (client) {
+          if (client.notes) {
+            setClientNotes(client.notes);
+            toast.info(`נמצאו הערות ללקוח: ${client.notes}`);
+          } else {
+            setClientNotes('');
+          }
+
+          // Auto-fill name if empty
+          if (!formData.customerName) {
+            setFormData(prev => ({ ...prev, customerName: client.name }));
+          }
+          // Auto-fill email if empty
+          if (!formData.customerEmail && client.email) {
+            setFormData(prev => ({ ...prev, customerEmail: client.email }));
+          }
+        } else {
+          setClientNotes('');
+        }
+      } catch (error) {
+        console.error('Error searching client:', error);
+      }
+    }
+  };
+
+  const handleExportAppointments = async () => {
+    try {
+      const response = await reportsApi.exportAppointments();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `appointments_${moment().format('YYYY-MM-DD')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error exporting appointments:', error);
+      toast.error('שגיאה ביצוא תורים');
+    }
+  };
+
+  const appointmentTypes = appointmentTypesData || [];
   const loading = appointmentsLoading || typesLoading;
 
+  // Custom formats for Hebrew date display
+  const formats = useMemo(() => ({
+    dateFormat: showHebrewDate ? (date, culture, localizer) => {
+      const hebrewDate = formatHebrewDate(date);
+      return `${date.getDate()} (${hebrewDate})`;
+    } : 'DD',
+    dayFormat: showHebrewDate ? (date, culture, localizer) => {
+      const dayNames = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+      const hebrewDate = formatHebrewDate(date);
+      return `${dayNames[date.getDay()]} ${date.getDate()} (${hebrewDate})`;
+    } : 'ddd DD',
+    monthHeaderFormat: showHebrewDate ? (date, culture, localizer) => {
+      const hebrewDate = formatHebrewDate(date);
+      return `${moment(date).format('MMMM YYYY')} - ${hebrewDate}`;
+    } : 'MMMM YYYY',
+  }), [showHebrewDate]);
+
   const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
+    const { name, value } = e.target;
+    setFormData(prev => {
+      const newData = { ...prev, [name]: value };
+
+      // Auto-fill duration and price when type changes
+      if (name === 'appointmentTypeId') {
+        const selectedType = appointmentTypes.find(t => t._id === value);
+        if (selectedType) {
+          newData.duration = selectedType.duration;
+          newData.price = selectedType.price;
+        }
+      }
+      return newData;
     });
   };
 
@@ -79,20 +159,45 @@ const Events = () => {
     const startDateTime = new Date(formData.date);
     startDateTime.setHours(parseInt(hours), parseInt(minutes));
 
-    const endDateTime = new Date(startDateTime.getTime() + selectedType.duration * 60000);
+    // Use overridden duration if provided, otherwise use type default
+    const duration = parseInt(formData.duration) || selectedType.duration;
+    const endDateTime = new Date(startDateTime.getTime() + duration * 60000);
     const endTime = `${String(endDateTime.getHours()).padStart(2, '0')}:${String(endDateTime.getMinutes()).padStart(2, '0')}`;
 
     const appointmentData = {
       ...formData,
       endTime,
-      duration: selectedType.duration,
+      duration,
       service: selectedType.name,
-      price: selectedType.price,
+      price: formData.price !== '' ? parseFloat(formData.price) : selectedType.price,
       status: 'confirmed',
     };
 
     createAppointment(appointmentData);
     setShowAddModal(false);
+    resetForm();
+  };
+
+  const handleBlockTime = async (e) => {
+    e.preventDefault();
+    if (!formData.date || !formData.startTime) {
+      toast.error('תאריך ושעה הם שדות חובה');
+      return;
+    }
+
+    const appointmentData = {
+      date: formData.date,
+      startTime: formData.startTime,
+      duration: parseInt(formData.duration || 60),
+      status: 'blocked',
+      customerName: 'זמן חסום',
+      customerPhone: '0000000000', // Dummy phone for validation
+      service: formData.description || 'חסימה יזומה',
+      description: formData.description
+    };
+
+    createAppointment(appointmentData);
+    setShowBlockModal(false);
     resetForm();
   };
 
@@ -116,8 +221,11 @@ const Events = () => {
       customerPhone: '',
       date: '',
       startTime: '',
-      notes: '',
+      description: '',
+      duration: '',
+      price: '',
     });
+    setClientNotes('');
   };
 
   // Convert appointments to calendar events
@@ -196,6 +304,13 @@ const Events = () => {
         </div>
         <div className="flex gap-3">
           <button
+            onClick={handleExportAppointments}
+            className="bg-green-600 text-white font-semibold px-4 py-3 rounded-lg shadow hover:bg-green-700 transition-all flex items-center gap-2"
+            title="יצא לאקסל"
+          >
+            📊 יצא נתונים
+          </button>
+          <button
             onClick={() => setView(view === 'calendar' ? 'list' : 'calendar')}
             className="bg-white border-2 border-primary text-primary font-semibold px-6 py-3 rounded-lg hover:bg-primary hover:text-white transition-all"
           >
@@ -206,6 +321,12 @@ const Events = () => {
             className="bg-gradient-to-r from-primary to-secondary text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1"
           >
             ➕ הוסף תור
+          </button>
+          <button
+            onClick={() => setShowBlockModal(true)}
+            className="bg-gray-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-700 transition-all transform hover:-translate-y-1"
+          >
+            🚫 חסום זמן
           </button>
         </div>
       </div>
@@ -263,15 +384,25 @@ const Events = () => {
       {/* Calendar View */}
       {view === 'calendar' ? (
         <div className="bg-white rounded-2xl shadow-lg p-6 h-[700px]">
+          {showHebrewDate && (
+            <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg text-center">
+              <span className="text-lg font-semibold text-primary">
+                📅 תאריך עברי: {formatHebrewDate(calendarDate)}
+              </span>
+            </div>
+          )}
           <Calendar
             localizer={localizer}
             events={calendarEvents}
             startAccessor="start"
             endAccessor="end"
-            style={{ height: '100%', minHeight: '600px' }}
+            style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }}
             messages={messages}
             onSelectEvent={handleSelectEvent}
+            onNavigate={(date) => setCalendarDate(date)}
+            date={calendarDate}
             rtl={true}
+            formats={formats}
             eventPropGetter={(event) => ({
               style: event.style,
             })}
@@ -412,6 +543,35 @@ const Events = () => {
                 </div>
               </div>
 
+              <div className="flex gap-4 mb-6">
+                <div className="flex-1">
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    משך זמן (דקות)
+                  </label>
+                  <input
+                    type="number"
+                    name="duration"
+                    value={selectedAppointment.duration}
+                    onChange={handleInputChange} // Assuming handleInputChange is adapted for editing or a new handler is used
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                    readOnly // Assuming these are display fields in detail modal
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    מחיר (₪)
+                  </label>
+                  <input
+                    type="number"
+                    name="price"
+                    value={selectedAppointment.price}
+                    onChange={handleInputChange} // Assuming handleInputChange is adapted for editing or a new handler is used
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                    readOnly // Assuming these are display fields in detail modal
+                  />
+                </div>
+              </div>
+
               {selectedAppointment.notes && (
                 <div className="mb-6 text-right">
                   <label className="text-gray-600 text-sm font-semibold">הערות</label>
@@ -428,6 +588,24 @@ const Events = () => {
                   className="w-full block text-center bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold px-6 py-3 rounded-lg hover:shadow-lg transition-all"
                 >
                   📅 הוסף ליומן Google
+                </a>
+              </div>
+
+              {/* WhatsApp and Call Buttons */}
+              <div className="flex gap-3 mb-6">
+                <a
+                  href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-center bg-green-500 text-white font-semibold px-4 py-3 rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  💬 שלח WhatsApp
+                </a>
+                <a
+                  href={`tel:${selectedAppointment.customerPhone}`}
+                  className="flex-1 text-center bg-blue-500 text-white font-semibold px-4 py-3 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  📞 התקשר
                 </a>
               </div>
 
@@ -499,6 +677,31 @@ const Events = () => {
                   </select>
                 </div>
 
+                <div className="flex gap-4">
+                  <div className="flex-1 text-right">
+                    <label className="text-gray-600 text-sm font-semibold">משך זמן (דקות)</label>
+                    <input
+                      type="number"
+                      name="duration"
+                      value={formData.duration}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                      placeholder="מבוסס על סוג תור"
+                    />
+                  </div>
+                  <div className="flex-1 text-right">
+                    <label className="text-gray-600 text-sm font-semibold">מחיר (₪)</label>
+                    <input
+                      type="number"
+                      name="price"
+                      value={formData.price}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                      placeholder="מבוסס על סוג תור"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-gray-700 font-semibold mb-2 text-right">
                     שם לקוח <span className="text-red-500">*</span>
@@ -525,7 +728,13 @@ const Events = () => {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                     dir="ltr"
                     required
+                    onBlur={handlePhoneBlur}
                   />
+                  {clientNotes && (
+                    <div className="mt-2 text-sm text-yellow-800 bg-yellow-50 p-2 rounded-md border border-yellow-200">
+                      <strong>📝 הערות לקוח:</strong> {clientNotes}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -577,8 +786,8 @@ const Events = () => {
                   הערות
                 </label>
                 <textarea
-                  name="notes"
-                  value={formData.notes}
+                  name="description"
+                  value={formData.description}
                   onChange={handleInputChange}
                   rows="3"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
@@ -597,6 +806,97 @@ const Events = () => {
                   type="button"
                   onClick={() => {
                     setShowAddModal(false);
+                    resetForm();
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  ❌ ביטול
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Block Time Modal */}
+      {showBlockModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-gray-800 to-gray-700 p-6 text-white">
+              <h2 className="text-2xl font-bold">חסימת זמן ביומן</h2>
+            </div>
+
+            <form onSubmit={handleBlockTime} className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    תאריך <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={formData.date}
+                    onChange={handleInputChange}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    שעת התחלה <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="time"
+                    name="startTime"
+                    value={formData.startTime}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    משך זמן (דקות)
+                  </label>
+                  <input
+                    type="number"
+                    name="duration"
+                    value={formData.duration || 60}
+                    onChange={handleInputChange}
+                    min="15"
+                    step="15"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    סיבת החסימה
+                  </label>
+                  <input
+                    type="text"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    placeholder="הפסקה, חופשה, סידורים..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-right"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-6 mt-6 border-t border-gray-200">
+                <button
+                  type="submit"
+                  className="flex-1 bg-gray-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-700 transition-all"
+                >
+                  🔒 חסום זמן
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBlockModal(false);
                     resetForm();
                   }}
                   className="flex-1 bg-gray-200 text-gray-700 font-semibold px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors"
