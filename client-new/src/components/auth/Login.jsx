@@ -95,14 +95,6 @@ const Login = () => {
             </Link>
           </p>
         </div>
-
-        {/* Built-in admin credentials hint */}
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 text-center">
-            <strong>משתמש ברירת מחדל:</strong><br />
-            admin@flowmatic.com / admin123
-          </p>
-        </div>
       </div>
     </div>
   );

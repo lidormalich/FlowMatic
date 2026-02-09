@@ -235,11 +235,11 @@ router.get('/available/:username', async (req, res) => {
     const { date, duration = 60 } = req.query;
     console.log(`[DEBUG] Availability Request: username="${req.params.username}", date="${date}"`);
     
-    // Find business owner (case-insensitive) - Allow both business_owner and admin roles
+    // Find business owner (case-insensitive) - Allow both business_owner    // Find business owner (case-insensitive)
     const owner = await User.findOne({
       username: { $regex: new RegExp(`^${req.params.username}$`, 'i') },
       isActive: true,
-      role: { $in: ['business_owner', 'admin'] }
+      role: { $in: ['business_owner', 'admin'] } // Allow admin role
     });
 
     if (!owner) {

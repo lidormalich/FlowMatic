@@ -16,7 +16,7 @@ const Waitlist = () => {
         try {
             setLoading(true);
             const data = await waitlistApi.getAll();
-            setWaitlist(data);
+            setWaitlist(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Error fetching waitlist:', error);
             toast.error('שגיאה בטעינת רשימת ההמתנה');
