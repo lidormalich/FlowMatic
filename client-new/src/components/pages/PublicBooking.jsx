@@ -6,12 +6,14 @@ import moment from 'moment';
 import 'moment/locale/he';
 import SkeletonLoader from '../common/SkeletonLoader';
 import { formatHebrewDate } from '../../utils/hebrewDate';
+import { useAuth } from '../../hooks/useAuth';
 import './PublicBooking.css';
 
 moment.locale('he');
 
 const PublicBooking = () => {
   const { username } = useParams();
+  const { user } = useAuth();
   const [step, setStep] = useState(1); // 1: Service, 2: Date/Time, 3: Details, 4: Success
   const [loading, setLoading] = useState(true);
   const [businessOwner, setBusinessOwner] = useState(null);
@@ -21,11 +23,12 @@ const PublicBooking = () => {
   const [loadingTimes, setLoadingTimes] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
 
+  const [currentMonth, setCurrentMonth] = useState(moment());
   const [formData, setFormData] = useState({
-    customerName: '',
-    customerPhone: '',
-    customerEmail: '',
-    date: new Date().toISOString().split('T')[0],
+    customerName: user?.name || '',
+    customerPhone: user?.phoneNumber || '',
+    customerEmail: user?.email || '',
+    date: moment().format('YYYY-MM-DD'),
     time: '',
   });
 
@@ -81,10 +84,6 @@ const PublicBooking = () => {
     setStep(2);
   };
 
-  const handleDateChange = (e) => {
-    setFormData({ ...formData, date: e.target.value, time: '' });
-  };
-
   const handleTimeSelect = (time) => {
     setFormData({ ...formData, time });
   };
@@ -93,8 +92,7 @@ const PublicBooking = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (!formData.time) {
       toast.error('נא לבחור שעה');
       return;
@@ -108,6 +106,7 @@ const PublicBooking = () => {
         customerName: formData.customerName,
         customerPhone: formData.customerPhone,
         customerEmail: formData.customerEmail,
+        customerId: user?.id || null,
         date: formData.date,
         startTime: formData.time,
         duration: selectedType.duration,
@@ -124,64 +123,91 @@ const PublicBooking = () => {
     }
   };
 
+  // Calendar Helpers
+  const renderCalendar = () => {
+    const startOfMonth = currentMonth.clone().startOf('month');
+    const endOfMonth = currentMonth.clone().endOf('month');
+    const daysInMonth = [];
+
+    // Fill previous month days
+    const startPadding = startOfMonth.day();
+    for (let i = startPadding - 1; i >= 0; i--) {
+      daysInMonth.push({ date: startOfMonth.clone().subtract(i + 1, 'days'), isPadding: true });
+    }
+
+    // Current month days
+    for (let i = 1; i <= endOfMonth.date(); i++) {
+      daysInMonth.push({ date: startOfMonth.clone().date(i), isPadding: false });
+    }
+
+    return daysInMonth;
+  };
+
+  const isToday = (date) => date.isSame(moment(), 'day');
+  const isSelected = (date) => date.format('YYYY-MM-DD') === formData.date;
+  const isPast = (date) => date.isBefore(moment(), 'day');
+
   if (loading) {
     return (
       <div className="public-booking-page">
-        <div className="booking-card p-12">
+        <div className="booking-card" style={{ opacity: 0.5 }}>
           <SkeletonLoader type="card" count={3} />
         </div>
       </div>
     );
   }
 
-  if (!businessOwner) {
-    return (
-      <div className="public-booking-page">
-        <div className="booking-card p-12 text-center">
-          <h2 className="text-2xl font-bold text-red-500">העסק לא נמצא</h2>
-          <p className="text-gray-600">בדוק את הקישור ונסה שוב</p>
-        </div>
-      </div>
-    );
-  }
+  // Helper icon selector based on service name
+  const getIcon = (name) => {
+    const n = name.toLowerCase();
+    if (n.includes('תספורת') || n.includes('cut')) return '✂️';
+    if (n.includes('צבע') || n.includes('color')) return '🎨';
+    if (n.includes('זקן') || n.includes('beard')) return '🧔';
+    if (n.includes('ציפורניים') || n.includes('nail')) return '💅';
+    if (n.includes('פנים') || n.includes('face')) return '🧴';
+    return '✨';
+  };
 
   return (
     <div className="public-booking-page">
       <div className="booking-card">
-        {step < 4 && (
-          <>
-            <div className="booking-header">
-              <h1>{businessOwner.businessName || businessOwner.name}</h1>
-              <p>{businessOwner.businessDescription || 'קביעת תור בקלות ובמהירות'}</p>
-            </div>
+        <h1 className="page-title">הזמנה פתוחה</h1>
 
-            <div className="booking-steps">
-              {[1, 2, 3].map((s) => (
-                <div key={s} className={`step-dot ${step === s ? 'active' : ''}`} />
-              ))}
+        {step < 4 && (
+          <div className="steps-wrapper">
+            <div className="steps-bar">
+              <div className={`step-item ${step >= 3 ? 'active' : ''}`}>
+                <div className="step-circle-outer"><div className="step-circle-inner" /></div>
+                <span className="step-label text-xs mt-2">אישור</span>
+              </div>
+              <div className="steps-line-new" />
+              <div className={`step-item ${step >= 2 ? 'active' : ''}`}>
+                <div className="step-circle-outer"><div className="step-circle-inner" /></div>
+                <span className="step-label text-xs mt-2">בחר תאריך</span>
+              </div>
+              <div className="steps-line-new" />
+              <div className={`step-item ${step >= 1 ? 'active' : ''}`}>
+                <div className="step-circle-outer"><div className="step-circle-inner" /></div>
+                <span className="step-label text-xs mt-2">בחר שירות</span>
+              </div>
             </div>
-          </>
+          </div>
         )}
 
-        <div className="booking-body">
+        <div className="booking-body-new">
           {step === 1 && (
-            <div className="service-selection">
-              <h2 className="text-xl font-bold mb-6 text-center">איזה שירות תרצה לקבל?</h2>
-              <div className="service-grid">
+            <div className="view-container">
+              <h3 className="section-header">בחר שירות</h3>
+              <div className="service-grid-new">
                 {appointmentTypes.map((type) => (
                   <div
                     key={type._id}
-                    className="service-card"
+                    className={`service-box ${selectedType?._id === type._id ? 'selected' : ''}`}
                     onClick={() => handleServiceSelect(type)}
                   >
-                    <div className="service-info text-right">
-                      <h3>{type.name}</h3>
-                      {type.description && <p>{type.description}</p>}
-                    </div>
-                    <div className="service-meta">
-                      <span className="service-price">₪{type.price}</span>
-                      <span className="service-duration">{type.duration} דק׳</span>
-                    </div>
+                    <span className="service-box-icon">{getIcon(type.name)}</span>
+                    <span className="service-box-name">{type.name}</span>
+                    <span className="service-box-desc">{type.description?.substring(0, 40)}...</span>
                   </div>
                 ))}
               </div>
@@ -189,151 +215,149 @@ const PublicBooking = () => {
           )}
 
           {step === 2 && (
-            <div className="time-selection">
-              <h2 className="text-xl font-bold mb-6 text-center">מתי תרצה להגיע?</h2>
-              <div className="calendar-container">
-                <div>
-                  <label className="form-label-custom text-right">בחר תאריך</label>
-                  <input
-                    type="date"
-                    className="date-input-custom"
-                    value={formData.date}
-                    onChange={handleDateChange}
-                    min={new Date().toISOString().split('T')[0]}
-                  />
-                  {hebrewDate && (
-                    <p className="text-sm text-primary mt-2 text-right font-medium">
-                      🇮🇱 {hebrewDate}
-                    </p>
-                  )}
+            <div className="view-container">
+              <h3 className="section-header">בחר תאריך</h3>
+              <div className="calendar-card">
+                <div className="calendar-top">
+                  <button className="opacity-50 hover:opacity-100" onClick={() => setCurrentMonth(currentMonth.clone().subtract(1, 'month'))}>‹</button>
+                  <span className="month-label text-right">{currentMonth.format('MMMM YYYY')}</span>
+                  <button className="opacity-50 hover:opacity-100" onClick={() => setCurrentMonth(currentMonth.clone().add(1, 'month'))}>›</button>
                 </div>
+                <div className="calendar-grid-header">
+                  <span>שבת</span><span>שישי</span><span>חמישי</span><span>רביעי</span><span>שלישי</span><span>שני</span><span>ראשון</span>
+                </div>
+                <div className="calendar-grid">
+                  {renderCalendar().map((day, idx) => (
+                    <div
+                      key={idx}
+                      className={`calendar-day ${day.isPadding ? 'disabled' : ''} ${isSelected(day.date) ? 'selected' : ''} ${isToday(day.date) ? 'today' : ''} ${isPast(day.date) ? 'disabled' : ''}`}
+                      onClick={() => !day.isPadding && !isPast(day.date) && setFormData({ ...formData, date: day.date.format('YYYY-MM-DD'), time: '' })}
+                    >
+                      {day.date.date()}
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-                <div>
-                  <label className="form-label-custom text-right">בחר שעה פנויה</label>
-                  {loadingTimes ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                      <p className="text-sm text-gray-500 mt-2">מחפש תורים פנויים...</p>
-                    </div>
-                  ) : availableTimes.length > 0 ? (
-                    <div className="slots-grid" dir="ltr">
-                      {availableTimes.map((time) => (
-                        <button
-                          key={time}
-                          className={`slot-button ${formData.time === time ? 'selected' : ''}`}
-                          onClick={() => handleTimeSelect(time)}
-                        >
-                          {time}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 bg-gray-50 rounded-2xl">
-                      <p className="text-gray-500 font-medium">אין תורים פנויים לתאריך זה</p>
-                      <p className="text-sm text-gray-400">נסו לבחור תאריך אחר או שירות אחר</p>
-                    </div>
-                  )}
-                </div>
+              {hebrewDate && (
+                <p className="text-right text-sm mb-6 opacity-80">📅 {hebrewDate}</p>
+              )}
+
+              <div className="time-section-new">
+                <h3 className="section-header">בחר שעה</h3>
+                {loadingTimes ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                  </div>
+                ) : availableTimes.length > 0 ? (
+                  <div className="time-chips-grid">
+                    {availableTimes.map((t) => (
+                      <div
+                        key={t}
+                        className={`time-chip ${formData.time === t ? 'selected' : ''}`}
+                        onClick={() => handleTimeSelect(t)}
+                      >
+                        {t}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10 bg-white/5 rounded-2xl">
+                    <p className="opacity-50">אין תורים פנויים לתאריך זה</p>
+                    <p className="text-xs opacity-30 mt-2">בדקו שעות פעילות בהגדרות העסק</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {step === 3 && (
-            <form onSubmit={handleSubmit} className="details-form">
-              <h2 className="text-xl font-bold mb-6 text-center">פרטים אחרונים וסיימנו</h2>
-              <div className="form-group-custom">
-                <label className="form-label-custom text-right">שם מלא *</label>
-                <input
-                  type="text"
-                  name="customerName"
-                  required
-                  className="form-input-custom text-right"
-                  placeholder="הכניסו את שמכם"
-                  value={formData.customerName}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="form-group-custom">
-                <label className="form-label-custom text-right">טלפון *</label>
-                <input
-                  type="tel"
-                  name="customerPhone"
-                  required
-                  className="form-input-custom"
-                  dir="ltr"
-                  placeholder="05X-XXXXXXX"
-                  value={formData.customerPhone}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="form-group-custom">
-                <label className="form-label-custom text-right">אימייל (אופציונלי)</label>
-                <input
-                  type="email"
-                  name="customerEmail"
-                  className="form-input-custom"
-                  dir="ltr"
-                  placeholder="name@example.com"
-                  value={formData.customerEmail}
-                  onChange={handleInputChange}
-                />
+            <div className="view-container">
+              <h3 className="section-header">פרטים אחרונים</h3>
+              <div className="glass-input-group">
+                <div className="glass-field">
+                  <label className="glass-label">שם מלא</label>
+                  <input
+                    type="text"
+                    name="customerName"
+                    className="glass-input text-right"
+                    placeholder="הכנס שם"
+                    value={formData.customerName}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="glass-field">
+                  <label className="glass-label">טלפון</label>
+                  <input
+                    type="tel"
+                    name="customerPhone"
+                    className="glass-input"
+                    dir="ltr"
+                    placeholder="05X-XXXXXXX"
+                    value={formData.customerPhone}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="glass-field">
+                  <label className="glass-label">אימייל (אופציונלי)</label>
+                  <input
+                    type="email"
+                    name="customerEmail"
+                    className="glass-input"
+                    dir="ltr"
+                    placeholder="name@example.com"
+                    value={formData.customerEmail}
+                    onChange={handleInputChange}
+                  />
+                </div>
               </div>
 
-              <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 mb-6 text-right">
-                <p className="font-bold text-primary mb-1">סיכום התור:</p>
-                <p className="text-sm text-gray-700">
-                  {selectedType?.name} עם {businessOwner.name}
-                </p>
-                <p className="text-sm text-gray-700">
-                  בתאריך {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}
+              <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-2xl text-right">
+                <p className="font-bold text-lg mb-1">{selectedType?.name}</p>
+                <p className="opacity-60">
+                  {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}
                 </p>
               </div>
-            </form>
+            </div>
           )}
 
           {step === 4 && (
-            <div className="success-screen">
-              <span className="success-icon">🎉</span>
-              <h2>התור נקבע בהצלחה!</h2>
-              <p>
-                שלחנו לך אישור לטלפון {formData.customerPhone}.<br />
-                נשמח לראות אותך בתאריך {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}.
+            <div className="success-view-new">
+              <div className="success-glow-icon">🎉</div>
+              <h2 className="text-3xl font-bold mb-4">התור נקבע!</h2>
+              <p className="text-lg opacity-70 mb-10">
+                נתראה בתאריך {moment(formData.date).format('DD/MM/YYYY')} <br />
+                בשעה {formData.time}
               </p>
               <button
-                className="btn-primary-custom w-full"
+                className="btn-crystal w-full justify-center"
                 onClick={() => window.location.reload()}
               >
-                קביעת תור נוסף
+                קבע תור נוסף
               </button>
             </div>
           )}
         </div>
 
-        {step > 1 && step < 4 && (
-          <div className="booking-footer">
-            {step === 2 && (
-              <button
-                className="btn-primary-custom"
-                disabled={!formData.time}
-                onClick={() => setStep(3)}
-              >
-                המשך לפרטים
-              </button>
-            )}
-            {step === 3 && (
-              <button
-                className="btn-primary-custom"
-                onClick={handleSubmit}
-                disabled={bookingLoading || !formData.customerName || !formData.customerPhone}
-              >
-                {bookingLoading ? 'מעבד...' : 'אשר וקבע תור'}
-              </button>
-            )}
+        {step < 4 && (
+          <div className="nav-footer">
+            {step > 1 ? (
+              <button className="btn-crystal" onClick={() => setStep(step - 1)}>חזור</button>
+            ) : <div />}
+
             <button
-              className="btn-secondary-custom"
-              onClick={() => setStep(step - 1)}
+              className="btn-crystal"
+              disabled={
+                (step === 1 && !selectedType) ||
+                (step === 2 && !formData.time) ||
+                (step === 3 && (!formData.customerName || !formData.customerPhone || bookingLoading))
+              }
+              onClick={() => {
+                if (step === 3) handleSubmit();
+                else setStep(step + 1);
+              }}
             >
-              חזור
+              {bookingLoading ? 'מבצע...' : (step === 3 ? 'קבע פגישה' : 'המשך')}
             </button>
           </div>
         )}

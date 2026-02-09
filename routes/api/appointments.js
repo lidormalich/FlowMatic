@@ -22,76 +22,90 @@ const appointmentValidation = Joi.object({
   status: Joi.string().valid('pending', 'confirmed', 'cancelled', 'completed', 'no_show', 'blocked').optional(),
   duration: Joi.number().optional(),
   service: Joi.string().required(),
-  price: Joi.number().optional()
+  price: Joi.number().optional(),
+  customerId: Joi.string().optional().allow(null, ''),
+  businessOwnerId: Joi.string().optional().allow(null, '')
 });
 
 // Helper: Calculate Available Slots with Buffer
 async function calculateAvailableSlots(businessOwnerId, date, duration) {
   try {
     const owner = await User.findById(businessOwnerId);
-    if (!owner) throw new Error('Business owner not found');
-
-    const businessHours = owner.businessHours || { startHour: 9, endHour: 17, workingDays: [0, 1, 2, 3, 4] };
-    const { startHour, endHour, workingDays } = businessHours;
-
-    console.log(`--- Availability Check: ${owner.username} ---`);
-    console.log(`Date: ${date}, Duration: ${duration}`);
-    console.log(`Config: Start: ${startHour}:00, End: ${endHour}:00, Days: ${workingDays}`);
-
-    const requestedDate = moment(date).startOf('day');
-    const dayOfWeek = requestedDate.day();
-    console.log(`Requested Day of Week: ${dayOfWeek}`);
-
-    // Convert workingDays to numbers just in case they are strings
-    const numericWorkingDays = workingDays.map(d => parseInt(d));
-
-    if (!numericWorkingDays.includes(dayOfWeek)) {
-      console.log(`FAILED: Day ${dayOfWeek} is not in working days [${numericWorkingDays}]`);
+    if (!owner) {
+      console.log(`[AVAILABILITY] Owner not found: ${businessOwnerId}`);
       return [];
     }
 
-    // Get existing appointments
+    // Harden business hours defaults
+    const bh = owner.businessHours || {};
+    const startHour = typeof bh.startHour === 'number' ? bh.startHour : 9;
+    const endHour = typeof bh.endHour === 'number' ? bh.endHour : 17;
+    const workingDays = Array.isArray(bh.workingDays) ? bh.workingDays : [0, 1, 2, 3, 4, 5];
+    
+    // Ensure duration is valid
+    const slotDuration = parseInt(duration) || 30;
+    if (slotDuration <= 0) return [];
+
+    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} ---`);
+    console.log(`Config: ${startHour}:00 - ${endHour}:00 | Days: [${workingDays}]`);
+
+    const requestedDate = moment(date).startOf('day');
+    const dayOfWeek = requestedDate.day();
+    
+    // Convert to numbers for safety
+    const numericWorkingDays = workingDays.map(d => parseInt(d));
+
+    if (!numericWorkingDays.includes(dayOfWeek)) {
+      console.log(`[AVAILABILITY] FAILED: Day ${dayOfWeek} is not a working day.`);
+      return [];
+    }
+
+    // Get existing appointments for the SPECIFIC day
+    // We use startOf/endOf day in UTC to avoid missing any appointments
     const appointments = await Event.find({
-      businessOwnerId,
+      businessOwnerId: owner._id,
       date: {
-        $gte: requestedDate.toDate(),
-        $lte: moment(requestedDate).endOf('day').toDate()
+        $gte: requestedDate.clone().startOf('day').toDate(),
+        $lte: requestedDate.clone().endOf('day').toDate()
       },
       status: { $in: ['pending', 'confirmed', 'blocked'] }
     }).sort('startTime');
-    console.log(`Found ${appointments.length} existing appointments/blocks`);
+    
+    console.log(`[AVAILABILITY] Found ${appointments.length} existing events.`);
 
     const slots = [];
-    let currentTime = moment(requestedDate).hour(startHour).minute(0);
-    const endTime = moment(requestedDate).hour(endHour).minute(0);
-    
     const now = moment();
     const isToday = requestedDate.isSame(now, 'day');
 
-    while (currentTime.clone().add(duration, 'minutes').isSameOrBefore(endTime)) {
-      const slotStartMoment = currentTime.clone();
-      const slotEndMoment = currentTime.clone().add(duration, 'minutes');
-      const slotStartStr = slotStartMoment.format('HH:mm');
+    // Start iterating from startHour
+    let currentTime = requestedDate.clone().hour(startHour).minute(0);
+    const endTime = requestedDate.clone().hour(endHour).minute(0);
 
-      // 1. Skip if slot is in the past (only for today)
-      if (isToday && slotStartMoment.isBefore(now)) {
-        currentTime.add(30, 'minutes');
-        continue;
-      }
+    // If it's today and we're starting before "now", we can skip ahead
+    if (isToday && currentTime.isBefore(now)) {
+      // Round up to the next 30-min window after "now"
+      currentTime = now.clone().add(30 - (now.minute() % 30), 'minutes').startOf('minute');
+    }
 
-      // 2. Check overlap with existing appointments (including Buffer)
+    console.log(`[AVAILABILITY] Loop Start: ${currentTime.format('HH:mm')} | End: ${endTime.format('HH:mm')}`);
+
+    while (currentTime.clone().add(slotDuration, 'minutes').isSameOrBefore(endTime)) {
+      const slotStartStr = currentTime.format('HH:mm');
+      const slotEndStr = currentTime.clone().add(slotDuration, 'minutes').format('HH:mm');
+
+      // Check overlap with existing appointments
       const isAvailable = !appointments.some(apt => {
-        const aptStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
-        const aptEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
-        
-        // Define slot boundaries for overlap check
-        const sStart = moment(slotStartStr, 'HH:mm');
-        const sEnd = moment(slotStartStr, 'HH:mm').add(duration, 'minutes');
+        // Use the same date for both to compare only hours/minutes
+        const aptStartMoment = moment(`${slotStartStr}`, 'HH:mm'); // current loop day context
+        const aptEndMoment = moment(`${slotStartStr}`, 'HH:mm').add(slotDuration, 'minutes');
+
+        const existingStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
+        const existingEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
 
         return (
-          (sStart.isSameOrAfter(aptStart) && sStart.isBefore(aptEnd)) ||
-          (sEnd.isAfter(aptStart) && sEnd.isSameOrBefore(aptEnd)) ||
-          (sStart.isSameOrBefore(aptStart) && sEnd.isSameOrAfter(aptEnd))
+          (aptStartMoment.isSameOrAfter(existingStart) && aptStartMoment.isBefore(existingEnd)) ||
+          (aptEndMoment.isAfter(existingStart) && aptEndMoment.isSameOrBefore(existingEnd)) ||
+          (aptStartMoment.isSameOrBefore(existingStart) && aptEndMoment.isSameOrAfter(existingEnd))
         );
       });
 
@@ -99,13 +113,14 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
         slots.push(slotStartStr);
       }
 
+      // Move forward by 30 mins (common interval)
       currentTime.add(30, 'minutes');
     }
 
-    console.log(`Generated ${slots.length} slots for ${owner.username} on ${date}`);
+    console.log(`[AVAILABILITY] Result: ${slots.length} slots found. [${slots.join(', ')}]`);
     return slots;
   } catch (error) {
-    console.error('Error in calculateAvailableSlots:', error);
+    console.error('[AVAILABILITY] Error:', error);
     return [];
   }
 }
@@ -216,28 +231,48 @@ router.get('/', passport.authenticate('jwt', { session: false }), async (req, re
 router.get('/available/:username', async (req, res) => {
   try {
     const { date, duration = 60 } = req.query;
-
-    if (!date) {
-      return res.status(400).json({ message: 'תאריך נדרש' });
-    }
-
-    // Find business owner
+    console.log(`[DEBUG] Availability Request: username="${req.params.username}", date="${date}"`);
+    
+    // Find business owner (case-insensitive) - Allow both business_owner and admin roles
     const owner = await User.findOne({
-      username: req.params.username,
+      username: { $regex: new RegExp(`^${req.params.username}$`, 'i') },
       isActive: true,
-      isSuspended: false,
-      role: 'business_owner'
+      role: { $in: ['business_owner', 'admin'] }
     });
 
     if (!owner) {
+      console.log(`[AVAILABILITY] FAILED for "${req.params.username}"`);
+      // Diagnostic check: why did it fail?
+      const diagnosticUser = await User.findOne({ username: { $regex: new RegExp(`^${req.params.username}$`, 'i') } });
+      if (!diagnosticUser) {
+        console.log(`[DEBUG] Reason: User NOT FOUND in database at all.`);
+      } else {
+        console.log(`[DEBUG] Reason: User found but check failed. isActive=${diagnosticUser.isActive}, role=${diagnosticUser.role}`);
+      }
       return res.status(404).json({ message: 'עסק לא נמצא' });
     }
+
+    console.log(`[AVAILABILITY] SUCCESS: Found user ${owner.username} (${owner._id})`);
 
     const slots = await calculateAvailableSlots(owner._id, date, parseInt(duration));
 
     res.json({ times: slots });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// GET /api/appointments/my-bookings - Get appointments where user is the customer
+router.get('/my-bookings', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const bookings = await Event.find({ customerId: req.user.id })
+      .populate('businessOwnerId', 'name businessName profileImage')
+      .sort({ date: -1, startTime: 1 });
+
+    res.json(bookings);
+  } catch (err) {
+    console.error('My bookings error:', err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
 });
@@ -251,14 +286,13 @@ router.post('/public/:username', async (req, res) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description } = value;
+    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId } = value;
 
     // Find business owner
     const owner = await User.findOne({
       username: req.params.username,
       isActive: true,
-      isSuspended: false,
-      role: 'business_owner'
+      role: { $in: ['business_owner', 'admin'] }
     });
 
     if (!owner) {
@@ -291,6 +325,7 @@ router.post('/public/:username', async (req, res) => {
     const newAppointment = new Event({
       businessOwnerId: owner._id,
       appointmentTypeId,
+      customerId: customerId || null,
       customerName,
       customerPhone,
       customerEmail: customerEmail || '',

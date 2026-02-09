@@ -16,6 +16,7 @@ const Sidebar = () => {
     { path: '/staff', label: 'צוות', icon: '💇', roles: ['admin', 'business_owner'] },
     { path: '/waitlist', label: 'רשימת המתנה', icon: '⏳', roles: ['admin', 'business_owner'] },
     { path: '/templates', label: 'תבניות הודעות', icon: '📨', roles: ['admin', 'business_owner'] },
+    { path: '/my-appointments', label: 'התורים שלי', icon: '👤' },
     { path: '/settings', label: 'הגדרות עסק', icon: '🛠️', roles: ['admin', 'business_owner'] },
   ];
 
