@@ -44,7 +44,7 @@ export const useAppointments = () => {
   });
 
   return {
-    appointments: appointments?.data || [],
+    appointments: appointments || [],
     isLoading,
     error,
     createAppointment: createMutation.mutate,

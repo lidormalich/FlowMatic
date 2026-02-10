@@ -38,14 +38,19 @@ const PublicBooking = () => {
     fetchBusinessOwner();
   }, [username]);
 
+  // Update Hebrew date whenever date changes
+  useEffect(() => {
+    if (formData.date && businessOwner?.showHebrewDate) {
+      setHebrewDate(formatHebrewDate(new Date(formData.date)));
+    } else {
+      setHebrewDate('');
+    }
+  }, [formData.date, businessOwner?.showHebrewDate]);
+
+  // Fetch available times when date and type are selected
   useEffect(() => {
     if (formData.date && businessOwner && selectedType) {
       fetchAvailableTimes();
-      if (businessOwner.showHebrewDate) {
-        setHebrewDate(formatHebrewDate(new Date(formData.date)));
-      } else {
-        setHebrewDate(''); // Ensure it's cleared if setting is disabled
-      }
     }
   }, [formData.date, selectedType, businessOwner]);
 
@@ -165,6 +170,26 @@ const PublicBooking = () => {
       </div>
     );
   }
+
+  // Generate Google Calendar URL
+  const generateGoogleCalendarUrl = () => {
+    if (!formData.date || !formData.time || !selectedType) return '';
+
+    const startDate = moment(`${formData.date} ${formData.time}`, 'YYYY-MM-DD HH:mm');
+    const endDate = startDate.clone().add(selectedType.duration, 'minutes');
+
+    const formatForGoogle = (m) => m.utc().format('YYYYMMDDTHHmmss') + 'Z';
+
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `${selectedType.name} - ${businessOwner?.businessName || 'תור'}`,
+      dates: `${formatForGoogle(startDate)}/${formatForGoogle(endDate)}`,
+      details: `תור ל${selectedType.name}\nמחיר: ${selectedType.price} ש"ח\nטלפון: ${businessOwner?.phoneNumber || ''}`,
+      location: businessOwner?.businessAddress || '',
+    });
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  };
 
   // Helper icon selector based on service name
   const getIcon = (name) => {
@@ -335,6 +360,9 @@ const PublicBooking = () => {
                 <p className="opacity-60">
                   {moment(formData.date).format('DD/MM/YYYY')} בשעה {formData.time}
                 </p>
+                {hebrewDate && (
+                  <p className="text-sm opacity-50 mt-1">📅 {hebrewDate}</p>
+                )}
               </div>
             </div>
           )}
@@ -343,16 +371,33 @@ const PublicBooking = () => {
             <div className="success-view-new">
               <div className="success-glow-icon">🎉</div>
               <h2 className="text-3xl font-bold mb-4">התור נקבע!</h2>
-              <p className="text-lg opacity-70 mb-10">
+              <p className="text-lg opacity-70 mb-6">
                 נתראה בתאריך {moment(formData.date).format('DD/MM/YYYY')} <br />
                 בשעה {formData.time}
               </p>
-              <button
-                className="btn-crystal w-full justify-center"
-                onClick={() => window.location.reload()}
-              >
-                קבע תור נוסף
-              </button>
+              {hebrewDate && (
+                <p className="text-sm opacity-60 mb-6">📅 {hebrewDate}</p>
+              )}
+              <div className="flex flex-col gap-3 w-full">
+                <a
+                  href={generateGoogleCalendarUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-crystal w-full justify-center flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19.5 3h-15A1.5 1.5 0 0 0 3 4.5v15A1.5 1.5 0 0 0 4.5 21h15a1.5 1.5 0 0 0 1.5-1.5v-15A1.5 1.5 0 0 0 19.5 3zM12 17.25A5.25 5.25 0 1 1 17.25 12 5.26 5.26 0 0 1 12 17.25z"/>
+                    <path d="M12 8.25v4.5l3 1.5"/>
+                  </svg>
+                  הוסף ליומן Google
+                </a>
+                <button
+                  className="btn-crystal-outline w-full justify-center"
+                  onClick={() => window.location.reload()}
+                >
+                  קבע תור נוסף
+                </button>
+              </div>
             </div>
           )}
         </div>
