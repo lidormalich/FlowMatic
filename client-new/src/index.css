@@ -1,13 +1,293 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* iOS Glassmorphism Design System */
+:root {
+  /* Colors */
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #8b5cf6;
+
+  /* Glass effects */
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-bg-dark: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --glass-border-dark: rgba(255, 255, 255, 0.1);
+  --ios-blur: blur(20px);
+  --ios-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  --ios-radius: 1.5rem;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans',
+    'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* iOS-style scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Glass Card Component */
+@layer components {
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-sm rounded-2xl;
+  }
+
+  .glass-card-dark {
+    @apply bg-slate-900/70 backdrop-blur-xl border border-white/10 rounded-2xl;
+  }
+
+  .glass-nav {
+    @apply bg-white/80 backdrop-blur-lg border-b border-slate-200/50;
+  }
+
+  .glass-sidebar {
+    @apply bg-white/70 backdrop-blur-xl border-r border-slate-200/50;
+  }
+
+  .glass-modal {
+    @apply bg-white/90 backdrop-blur-2xl border border-white/30 rounded-3xl shadow-2xl;
+  }
+
+  .glass-input {
+    @apply h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900
+           placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500
+           focus:bg-white transition-all duration-200;
+  }
+
+  .btn-primary {
+    @apply bg-blue-600 text-white font-semibold rounded-full px-6 py-3
+           shadow-lg shadow-blue-500/30 hover:bg-blue-500 active:scale-95
+           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           disabled:active:scale-100;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-100 text-slate-700 font-semibold rounded-full px-6 py-3
+           hover:bg-slate-200 active:scale-95 transition-all duration-200;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-slate-600 font-medium rounded-full px-4 py-2
+           hover:bg-slate-100 active:scale-95 transition-all duration-200;
+  }
+
+  /* Bento Grid for Dashboard */
+  .bento-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .bento-card {
+    @apply glass-card p-6 hover:shadow-lg hover:-translate-y-1
+           transition-all duration-300 cursor-pointer;
+  }
+
+  .bento-card-lg {
+    @apply bento-card col-span-2 row-span-2;
+  }
+
+  /* iOS-style Badge */
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .badge-blue {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  .badge-green {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .badge-yellow {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+
+  .badge-red {
+    @apply bg-red-100 text-red-700;
+  }
+
+  .badge-purple {
+    @apply bg-purple-100 text-purple-700;
+  }
+
+  .badge-gray {
+    @apply bg-slate-100 text-slate-700;
+  }
+
+  /* iOS-style Section Header */
+  .section-title {
+    @apply text-3xl font-bold tracking-tight text-slate-900;
+  }
+
+  .section-subtitle {
+    @apply text-slate-500 mt-1;
+  }
+
+  /* Bottom sheet handle */
+  .sheet-handle {
+    @apply w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4;
+  }
+
+  /* Mobile bottom nav */
+  .mobile-nav {
+    @apply fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg
+           border-t border-slate-200/50 px-6 py-3 z-50 md:hidden;
+  }
+
+  /* Stats card for dashboard */
+  .stats-card {
+    @apply glass-card p-5 text-center;
+  }
+
+  .stats-value {
+    @apply text-3xl font-bold text-slate-900;
+  }
+
+  .stats-label {
+    @apply text-sm text-slate-500 mt-1;
+  }
+
+  /* Table styles */
+  .ios-table {
+    @apply w-full;
+  }
+
+  .ios-table thead {
+    @apply bg-slate-50/80;
+  }
+
+  .ios-table th {
+    @apply px-6 py-4 text-right font-semibold text-slate-600 text-sm uppercase tracking-wider;
+  }
+
+  .ios-table td {
+    @apply px-6 py-4;
+  }
+
+  .ios-table tbody tr {
+    @apply border-b border-slate-100 hover:bg-slate-50/50 transition-colors;
+  }
+
+  /* Action buttons */
+  .action-btn {
+    @apply p-2 rounded-xl hover:bg-slate-100 transition-colors;
+  }
+
+  /* Form field wrapper */
+  .form-field {
+    @apply space-y-2;
+  }
+
+  .form-label {
+    @apply block text-sm font-semibold text-slate-700 text-right;
+  }
+
+  /* Modal overlay */
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+  }
+
+  /* Animations */
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+/* Custom color classes for RTL support */
+.text-start {
+  text-align: right;
+}
+
+.text-end {
+  text-align: left;
+}
+
+/* Override for React Big Calendar */
+.rbc-calendar {
+  font-family: inherit;
+}
+
+.rbc-header {
+  padding: 12px 0;
+  font-weight: 600;
+}
+
+.rbc-event {
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+  border: none !important;
+}
+
+.rbc-today {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+.rbc-toolbar button {
+  border-radius: 9999px !important;
+  padding: 8px 16px !important;
+  font-weight: 500 !important;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: #3b82f6 !important;
+  color: white !important;
 }
