@@ -91,7 +91,7 @@ const Sidebar = () => {
         className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
           isActive
             ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-            : 'text-slate-600 hover:bg-slate-100'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
         }`}
       >
         <span className={isActive ? 'text-white' : 'text-slate-400'}>
@@ -125,7 +125,7 @@ const Sidebar = () => {
 
       {/* Mobile Menu Drawer - Slide from bottom (iOS style) */}
       <aside
-        className={`md:hidden fixed bottom-0 right-0 left-0 z-50 bg-white/95 backdrop-blur-xl rounded-t-3xl shadow-2xl transform transition-transform duration-300 ease-out max-h-[85vh] ${
+        className={`md:hidden fixed bottom-0 right-0 left-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-t-3xl shadow-2xl transform transition-transform duration-300 ease-out max-h-[85vh] ${
           isMobileMenuOpen ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
@@ -134,17 +134,17 @@ const Sidebar = () => {
           <div className="w-12 h-1 bg-slate-300 rounded-full mx-auto" />
         </div>
 
-        <div className="px-4 pb-4 flex items-center justify-between border-b border-slate-100">
+        <div className="px-4 pb-4 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.06]">
           <button
             onClick={closeMobileMenu}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
             aria-label="סגור תפריט"
           >
             <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          <h3 className="text-lg font-bold text-slate-900">תפריט ניווט</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">תפריט ניווט</h3>
         </div>
 
         <nav className="p-4 overflow-y-auto max-h-[calc(85vh-80px)] space-y-1">
@@ -155,8 +155,8 @@ const Sidebar = () => {
       </aside>
 
       {/* Desktop Sidebar */}
-      <aside className="w-64 bg-white/70 backdrop-blur-xl border-r border-slate-200/50 min-h-[calc(100vh-64px)] sticky top-16 hidden md:block">
-        <div className="p-5 border-b border-slate-100">
+      <aside className="w-64 bg-white/70 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-white/[0.08] min-h-[calc(100vh-64px)] sticky top-16 hidden md:block">
+        <div className="p-5 border-b border-slate-100 dark:border-white/[0.06]">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider text-right">תפריט ניווט</h3>
         </div>
 

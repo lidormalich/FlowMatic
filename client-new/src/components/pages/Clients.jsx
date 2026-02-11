@@ -17,8 +17,17 @@ const Clients = () => {
         name: '',
         phone: '',
         email: '',
-        notes: ''
+        notes: '',
+        tags: []
     });
+
+    const PREDEFINED_TAGS = [
+        { label: 'VIP', icon: '👑' },
+        { label: 'מאחר כרוני', icon: '⏰' },
+        { label: 'חייב כסף', icon: '💰' },
+        { label: 'חדש', icon: '⭐' },
+        { label: 'קבוע', icon: '💙' },
+    ];
 
     useEffect(() => {
         syncAndFetch();
@@ -95,6 +104,15 @@ const Clients = () => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    const toggleTag = (tagLabel) => {
+        setFormData(prev => ({
+            ...prev,
+            tags: prev.tags.includes(tagLabel)
+                ? prev.tags.filter(t => t !== tagLabel)
+                : [...prev.tags, tagLabel]
+        }));
+    };
+
     const openHistoryModal = async (clientId) => {
         try {
             const response = await api.get(`/clients/${clientId}`);
@@ -108,7 +126,7 @@ const Clients = () => {
 
     const openCreateModal = () => {
         setModalMode('create');
-        setFormData({ name: '', phone: '', email: '', notes: '' });
+        setFormData({ name: '', phone: '', email: '', notes: '', tags: [] });
         setShowModal(true);
     };
 
@@ -119,7 +137,8 @@ const Clients = () => {
             name: client.name,
             phone: client.phone,
             email: client.email || '',
-            notes: client.notes || ''
+            notes: client.notes || '',
+            tags: client.tags || []
         });
         setShowModal(true);
     };
@@ -154,6 +173,24 @@ const Clients = () => {
         }
     };
 
+    const handleToggleBlock = async (client) => {
+        const newBlocked = !client.isBlocked;
+        const action = newBlocked ? 'לחסום' : 'לשחרר';
+        if (!window.confirm(`האם אתה בטוח שברצונך ${action} את ${client.name}?`)) return;
+
+        try {
+            await api.put(`/clients/${client._id}`, {
+                isBlocked: newBlocked,
+                blockedReason: newBlocked ? 'חסום ידנית' : ''
+            });
+            toast.success(newBlocked ? 'הלקוח נחסם בהצלחה' : 'הלקוח שוחרר בהצלחה');
+            fetchClients();
+        } catch (error) {
+            console.error('Error toggling block:', error);
+            toast.error('שגיאה בעדכון סטטוס חסימה');
+        }
+    };
+
     const filteredClients = clients.filter(client =>
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.phone.includes(searchTerm) ||
@@ -165,8 +202,8 @@ const Clients = () => {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">ניהול לקוחות</h1>
-                    <p className="text-slate-500">צפה ונהל את מאגר הלקוחות שלך ({clients.length} לקוחות)</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-1">ניהול לקוחות</h1>
+                    <p className="text-slate-500 dark:text-slate-400">צפה ונהל את מאגר הלקוחות שלך ({clients.length} לקוחות)</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
                     <button
@@ -249,8 +286,29 @@ const Clients = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {filteredClients.map(client => (
-                                    <tr key={client._id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-slate-900">{client.name}</td>
+                                    <tr key={client._id} className={`hover:bg-slate-50/50 transition-colors ${client.isBlocked ? 'opacity-60' : ''}`}>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-slate-900 dark:text-slate-100">{client.name}</span>
+                                                {client.isBlocked && (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                                                        חסום
+                                                    </span>
+                                                )}
+                                                {client.tags?.length > 0 && (
+                                                    <div className="flex gap-1">
+                                                        {client.tags.map(tag => {
+                                                            const found = PREDEFINED_TAGS.find(t => t.label === tag);
+                                                            return (
+                                                                <span key={tag} className="text-xs" title={tag}>
+                                                                    {found?.icon || '🏷️'}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 text-slate-600" dir="ltr">{client.phone}</td>
                                         <td className="px-6 py-4 text-slate-600">{client.email || '-'}</td>
                                         <td className="px-6 py-4 text-center">
@@ -294,6 +352,21 @@ const Clients = () => {
                                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                     </svg>
+                                                </button>
+                                                <button
+                                                    onClick={() => handleToggleBlock(client)}
+                                                    className={`p-2 rounded-xl transition-colors ${client.isBlocked ? 'hover:bg-green-50 text-green-600' : 'hover:bg-orange-50 text-orange-500'}`}
+                                                    title={client.isBlocked ? 'שחרר חסימה' : 'חסום לקוח'}
+                                                >
+                                                    {client.isBlocked ? (
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                                        </svg>
+                                                    )}
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(client._id)}
@@ -468,6 +541,28 @@ const Clients = () => {
                                         className="w-full bg-slate-100 border-0 rounded-2xl px-4 py-3 text-slate-900 text-right placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all duration-200 outline-none resize-none"
                                     />
                                 </div>
+                                {/* Tags */}
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 text-right">תגיות</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {PREDEFINED_TAGS.map(tag => (
+                                            <button
+                                                key={tag.label}
+                                                type="button"
+                                                onClick={() => toggleTag(tag.label)}
+                                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 active:scale-95 ${
+                                                    formData.tags.includes(tag.label)
+                                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
+                                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                                }`}
+                                            >
+                                                <span>{tag.icon}</span>
+                                                <span>{tag.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="flex gap-3 pt-4">
                                     <button
                                         type="button"
