@@ -269,16 +269,16 @@ const PublicBooking = () => {
               <div className="calendar-top">
                 <button
                   className="calendar-nav-btn"
-                  onClick={() => setCurrentMonth(currentMonth.clone().add(1, 'month'))}
-                >
-                  ›
+                  onClick={() => setCurrentMonth(currentMonth.clone().subtract(1, 'month'))}
+                >‹
+
                 </button>
                 <span className="month-label">{currentMonth.format('MMMM YYYY')}</span>
                 <button
                   className="calendar-nav-btn"
-                  onClick={() => setCurrentMonth(currentMonth.clone().subtract(1, 'month'))}
+                  onClick={() => setCurrentMonth(currentMonth.clone().add(1, 'month'))}
                 >
-                  ‹
+                  ›
                 </button>
               </div>
 

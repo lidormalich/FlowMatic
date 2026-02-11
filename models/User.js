@@ -49,7 +49,15 @@ const UserSchema = new Schema({
     businessHours: {
         startHour: { type: Number, default: 9 },
         endHour: { type: Number, default: 17 },
-        workingDays: { type: [Number], default: [0, 1, 2, 3, 4] } // 0 = Sunday, 6 = Saturday
+        workingDays: { type: [Number], default: [0, 1, 2, 3, 4] }, // 0 = Sunday, 6 = Saturday
+        slotInterval: { type: Number, default: 30 }, // minutes between slots
+        breakTime: {
+            enabled: { type: Boolean, default: false },
+            startHour: { type: Number, default: 12 },
+            startMinute: { type: Number, default: 0 },
+            endHour: { type: Number, default: 13 },
+            endMinute: { type: Number, default: 0 }
+        }
     },
     phoneNumber: {
         type: String,

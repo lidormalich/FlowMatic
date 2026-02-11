@@ -108,6 +108,15 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
             if (req.body.businessHours.startHour !== undefined) user.businessHours.startHour = req.body.businessHours.startHour;
             if (req.body.businessHours.endHour !== undefined) user.businessHours.endHour = req.body.businessHours.endHour;
             if (req.body.businessHours.workingDays !== undefined) user.businessHours.workingDays = req.body.businessHours.workingDays;
+            if (req.body.businessHours.slotInterval !== undefined) user.businessHours.slotInterval = req.body.businessHours.slotInterval;
+            if (req.body.businessHours.breakTime) {
+                if (!user.businessHours.breakTime) user.businessHours.breakTime = {};
+                if (req.body.businessHours.breakTime.enabled !== undefined) user.businessHours.breakTime.enabled = req.body.businessHours.breakTime.enabled;
+                if (req.body.businessHours.breakTime.startHour !== undefined) user.businessHours.breakTime.startHour = req.body.businessHours.breakTime.startHour;
+                if (req.body.businessHours.breakTime.startMinute !== undefined) user.businessHours.breakTime.startMinute = req.body.businessHours.breakTime.startMinute;
+                if (req.body.businessHours.breakTime.endHour !== undefined) user.businessHours.breakTime.endHour = req.body.businessHours.breakTime.endHour;
+                if (req.body.businessHours.breakTime.endMinute !== undefined) user.businessHours.breakTime.endMinute = req.body.businessHours.breakTime.endMinute;
+            }
         }
 
         // SMS Notifications settings

@@ -30,7 +30,15 @@ const BusinessSettings = () => {
         businessHours: {
             startHour: 9,
             endHour: 17,
-            workingDays: [0, 1, 2, 3, 4]
+            workingDays: [0, 1, 2, 3, 4],
+            slotInterval: 30,
+            breakTime: {
+                enabled: false,
+                startHour: 12,
+                startMinute: 0,
+                endHour: 13,
+                endMinute: 0
+            }
         },
 
         // Display Settings
@@ -73,7 +81,15 @@ const BusinessSettings = () => {
                 businessHours: {
                     startHour: userData.businessHours?.startHour ?? 9,
                     endHour: userData.businessHours?.endHour ?? 17,
-                    workingDays: userData.businessHours?.workingDays || [0, 1, 2, 3, 4]
+                    workingDays: userData.businessHours?.workingDays || [0, 1, 2, 3, 4],
+                    slotInterval: userData.businessHours?.slotInterval ?? 30,
+                    breakTime: {
+                        enabled: userData.businessHours?.breakTime?.enabled ?? false,
+                        startHour: userData.businessHours?.breakTime?.startHour ?? 12,
+                        startMinute: userData.businessHours?.breakTime?.startMinute ?? 0,
+                        endHour: userData.businessHours?.breakTime?.endHour ?? 13,
+                        endMinute: userData.businessHours?.breakTime?.endMinute ?? 0
+                    }
                 },
                 showHebrewDate: userData.showHebrewDate ?? false,
                 themeSettings: {
@@ -323,6 +339,130 @@ const BusinessSettings = () => {
                                     לחץ על יום כדי להפעיל/לבטל • נבחרו {formData.businessHours.workingDays.length} ימים
                                 </p>
                             </div>
+                        </div>
+
+                        {/* Slot Interval */}
+                        <div>
+                            <label className="block text-gray-700 font-semibold mb-2 text-right">מרווח בין תורים (דקות)</label>
+                            <p className="text-sm text-gray-500 mb-3 text-right">כל כמה דקות יוצג סלוט פנוי ללקוח</p>
+                            <div className="flex flex-wrap gap-2">
+                                {[10, 15, 20, 30, 45, 60].map(interval => (
+                                    <button
+                                        key={interval}
+                                        type="button"
+                                        onClick={() => handleNestedChange('businessHours', 'slotInterval', interval)}
+                                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${formData.businessHours.slotInterval === interval
+                                            ? 'bg-gradient-to-r from-primary to-secondary text-white shadow-lg'
+                                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {interval} דק׳
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Break Time */}
+                        <div>
+                            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-100">
+                                <div className="text-right">
+                                    <h3 className="font-bold text-gray-800 text-lg">☕ הפסקה באמצע היום</h3>
+                                    <p className="text-sm text-gray-600 mt-1">הגדר זמן הפסקה שבו לא ניתן לקבוע תורים</p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.businessHours.breakTime.enabled}
+                                        onChange={(e) => setFormData(prev => ({
+                                            ...prev,
+                                            businessHours: {
+                                                ...prev.businessHours,
+                                                breakTime: { ...prev.businessHours.breakTime, enabled: e.target.checked }
+                                            }
+                                        }))}
+                                        className="sr-only peer"
+                                    />
+                                    <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-200 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-orange-500"></div>
+                                </label>
+                            </div>
+
+                            {formData.businessHours.breakTime.enabled && (
+                                <div className="grid grid-cols-2 gap-4 mt-4 p-4 bg-orange-50 rounded-xl">
+                                    <div>
+                                        <label className="block text-gray-700 font-semibold mb-2 text-right">תחילת הפסקה</label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={formData.businessHours.breakTime.startHour}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    businessHours: {
+                                                        ...prev.businessHours,
+                                                        breakTime: { ...prev.businessHours.breakTime, startHour: parseInt(e.target.value) }
+                                                    }
+                                                }))}
+                                                className="flex-1 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-right"
+                                            >
+                                                {Array.from({ length: 24 }, (_, i) => (
+                                                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                value={formData.businessHours.breakTime.startMinute}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    businessHours: {
+                                                        ...prev.businessHours,
+                                                        breakTime: { ...prev.businessHours.breakTime, startMinute: parseInt(e.target.value) }
+                                                    }
+                                                }))}
+                                                className="flex-1 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-right"
+                                            >
+                                                {[0, 15, 30, 45].map(m => (
+                                                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-gray-700 font-semibold mb-2 text-right">סוף הפסקה</label>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={formData.businessHours.breakTime.endHour}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    businessHours: {
+                                                        ...prev.businessHours,
+                                                        breakTime: { ...prev.businessHours.breakTime, endHour: parseInt(e.target.value) }
+                                                    }
+                                                }))}
+                                                className="flex-1 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-right"
+                                            >
+                                                {Array.from({ length: 24 }, (_, i) => (
+                                                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                                                ))}
+                                            </select>
+                                            <select
+                                                value={formData.businessHours.breakTime.endMinute}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    businessHours: {
+                                                        ...prev.businessHours,
+                                                        breakTime: { ...prev.businessHours.breakTime, endMinute: parseInt(e.target.value) }
+                                                    }
+                                                }))}
+                                                className="flex-1 px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent text-right"
+                                            >
+                                                {[0, 15, 30, 45].map(m => (
+                                                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p className="col-span-2 text-sm text-orange-700 text-center mt-2">
+                                        הפסקה: {String(formData.businessHours.breakTime.startHour).padStart(2, '0')}:{String(formData.businessHours.breakTime.startMinute).padStart(2, '0')} - {String(formData.businessHours.breakTime.endHour).padStart(2, '0')}:{String(formData.businessHours.breakTime.endMinute).padStart(2, '0')}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
