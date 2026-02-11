@@ -27,7 +27,13 @@ const Clients = () => {
     const syncAndFetch = async () => {
         try {
             setLoading(true);
-            await api.post('/clients/sync');
+            // Sync silently - don't block on failure
+            try {
+                await api.post('/clients/sync');
+            } catch (syncErr) {
+                console.warn('Client sync skipped:', syncErr.message);
+            }
+            // Always fetch clients
             const response = await api.get('/clients');
             setClients(response.data);
         } catch (error) {

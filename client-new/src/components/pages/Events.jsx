@@ -42,6 +42,10 @@ const Events = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' });
   const [clientNotes, setClientNotes] = useState('');
+  const [detailClientNotes, setDetailClientNotes] = useState('');
+  const [detailClientId, setDetailClientId] = useState(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteInput, setNoteInput] = useState('');
 
   const appointmentTypes = appointmentTypesData || [];
   const loading = appointmentsLoading || typesLoading;
@@ -119,6 +123,34 @@ const Events = () => {
   };
 
   const handleCancelAppointment = (id) => { if (window.confirm('האם אתה בטוח שברצונך לבטל תור זה?')) { cancelAppointment(id); setShowDetailModal(false); } };
+
+  const openDetailModal = async (apt) => {
+    setSelectedAppointment(apt);
+    setShowDetailModal(true);
+    setDetailClientNotes('');
+    setDetailClientId(null);
+    setEditingNote(false);
+    // Fetch client notes
+    try {
+      const clients = await clientsApi.search(apt.customerPhone);
+      const client = clients.find(c => c.phone.replace(/\D/g, '').includes(apt.customerPhone.replace(/\D/g, '')));
+      if (client) {
+        setDetailClientNotes(client.notes || '');
+        setDetailClientId(client._id);
+        setNoteInput(client.notes || '');
+      }
+    } catch (e) { console.warn('Could not fetch client notes'); }
+  };
+
+  const handleSaveClientNote = async () => {
+    if (!detailClientId) return;
+    try {
+      await clientsApi.update(detailClientId, { notes: noteInput });
+      setDetailClientNotes(noteInput);
+      setEditingNote(false);
+      toast.success('הערה עודכנה בהצלחה');
+    } catch (e) { toast.error('שגיאה בשמירת הערה'); }
+  };
   const handleUpdateStatus = (id, status) => { updateAppointment({ id, data: { status } }); setShowDetailModal(false); };
   const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' }); setClientNotes(''); };
 
@@ -165,7 +197,7 @@ const Events = () => {
       {view === 'calendar' ? (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm" style={{ minHeight: '700px' }}>
           {showHebrewDate && <div className="mb-4 p-3 bg-blue-50 rounded-2xl text-center"><span className="text-lg font-semibold text-blue-600">תאריך עברי: {formatHebrewDate(calendarDate)}</span></div>}
-          <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { setSelectedAppointment(e.resource); setShowDetailModal(true); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} />
+          <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} />
         </div>
       ) : (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-sm overflow-hidden">
@@ -178,7 +210,7 @@ const Events = () => {
                 <tbody className="divide-y divide-slate-100">
                   {filteredAppointments.sort((a, b) => new Date(b.date) - new Date(a.date)).map(apt => {
                     const badge = getStatusBadge(apt.status);
-                    return <tr key={apt._id} className="hover:bg-slate-50/50 transition-colors"><td className="px-6 py-4 text-slate-900">{moment(apt.date).format('DD/MM/YYYY')}</td><td className="px-6 py-4 text-slate-900">{apt.startTime}</td><td className="px-6 py-4 font-semibold text-slate-900">{apt.customerName}</td><td className="px-6 py-4 text-slate-600" dir="ltr">{apt.customerPhone}</td><td className="px-6 py-4 text-slate-900">{apt.service}</td><td className="px-6 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${badge.color}`}>{badge.text}</span></td><td className="px-6 py-4"><button onClick={() => { setSelectedAppointment(apt); setShowDetailModal(true); }} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors text-sm font-medium">צפה</button></td></tr>;
+                    return <tr key={apt._id} className="hover:bg-slate-50/50 transition-colors"><td className="px-6 py-4 text-slate-900">{moment(apt.date).format('DD/MM/YYYY')}</td><td className="px-6 py-4 text-slate-900">{apt.startTime}</td><td className="px-6 py-4 font-semibold text-slate-900">{apt.customerName}</td><td className="px-6 py-4 text-slate-600" dir="ltr">{apt.customerPhone}</td><td className="px-6 py-4 text-slate-900">{apt.service}</td><td className="px-6 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${badge.color}`}>{badge.text}</span></td><td className="px-6 py-4"><button onClick={() => openDetailModal(apt)} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors text-sm font-medium">צפה</button></td></tr>;
                   })}
                 </tbody>
               </table>
@@ -205,6 +237,25 @@ const Events = () => {
                 <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-3 rounded-full transition-colors">WhatsApp</a>
                 <a href={`tel:${selectedAppointment.customerPhone}`} className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-3 rounded-full transition-colors">התקשר</a>
               </div>
+              {/* Client Notes */}
+              {detailClientId && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-right">
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => { setEditingNote(!editingNote); setNoteInput(detailClientNotes); }} className="text-sm text-amber-700 hover:text-amber-900 font-medium transition-colors">
+                      {editingNote ? 'ביטול' : 'ערוך'}
+                    </button>
+                    <h4 className="text-sm font-bold text-amber-800">הערות לקוח</h4>
+                  </div>
+                  {editingNote ? (
+                    <div className="space-y-2">
+                      <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} rows={3} className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-slate-900 text-right text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none" placeholder="הוסף הערה על הלקוח..." />
+                      <button onClick={handleSaveClientNote} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 rounded-xl text-sm transition-colors">שמור הערה</button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-amber-900">{detailClientNotes || 'אין הערות'}</p>
+                  )}
+                </div>
+              )}
               <div className="pt-6 border-t border-slate-100">
                 {selectedAppointment.status === 'pending' && <div className="flex gap-3 mb-4"><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'confirmed')} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-full">אשר</button><button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-full">דחה</button></div>}
                 {selectedAppointment.status === 'confirmed' && <div className="space-y-3 mb-4"><div className="flex gap-3"><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-full">הושלם</button><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-500 hover:bg-slate-600 text-white font-semibold py-3 rounded-full">לא הגיע</button></div><button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-3 rounded-full">בטל תור</button></div>}
