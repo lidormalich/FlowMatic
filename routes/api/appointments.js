@@ -41,13 +41,18 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
     const startHour = typeof bh.startHour === 'number' ? bh.startHour : 9;
     const endHour = typeof bh.endHour === 'number' ? bh.endHour : 17;
     const workingDays = Array.isArray(bh.workingDays) ? bh.workingDays : [0, 1, 2, 3, 4, 5];
-    
+    const slotInterval = typeof bh.slotInterval === 'number' && bh.slotInterval > 0 ? bh.slotInterval : 30;
+    const breakTime = bh.breakTime || { enabled: false };
+
     // Ensure duration is valid
     const slotDuration = parseInt(duration) || 30;
     if (slotDuration <= 0) return [];
 
-    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} ---`);
+    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} | Interval: ${slotInterval} ---`);
     console.log(`Config: ${startHour}:00 - ${endHour}:00 | Days: [${workingDays}]`);
+    if (breakTime.enabled) {
+      console.log(`Break: ${breakTime.startHour}:${String(breakTime.startMinute || 0).padStart(2, '0')} - ${breakTime.endHour}:${String(breakTime.endMinute || 0).padStart(2, '0')}`);
+    }
 
     const requestedDate = moment(date).startOf('day');
     const dayOfWeek = requestedDate.day();
@@ -83,21 +88,37 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
 
     // If it's today and we're starting before "now", we can skip ahead
     if (isToday && currentTime.isBefore(now)) {
-      // Round up to the next 30-min window after "now"
-      currentTime = now.clone().add(30 - (now.minute() % 30), 'minutes').startOf('minute');
+      // Round up to the next slot interval after "now"
+      const remainder = now.minute() % slotInterval;
+      currentTime = now.clone().add(remainder === 0 ? 0 : slotInterval - remainder, 'minutes').startOf('minute');
+    }
+
+    // Prepare break time boundaries if enabled
+    let breakStart = null;
+    let breakEnd = null;
+    if (breakTime.enabled) {
+      breakStart = requestedDate.clone().hour(breakTime.startHour).minute(breakTime.startMinute || 0);
+      breakEnd = requestedDate.clone().hour(breakTime.endHour).minute(breakTime.endMinute || 0);
     }
 
     console.log(`[AVAILABILITY] Loop Start: ${currentTime.format('HH:mm')} | End: ${endTime.format('HH:mm')}`);
 
     while (currentTime.clone().add(slotDuration, 'minutes').isSameOrBefore(endTime)) {
       const slotStartStr = currentTime.format('HH:mm');
-      const slotEndStr = currentTime.clone().add(slotDuration, 'minutes').format('HH:mm');
+      const slotEndMoment = currentTime.clone().add(slotDuration, 'minutes');
+
+      // Skip slots that overlap with break time
+      if (breakStart && breakEnd) {
+        if (currentTime.isBefore(breakEnd) && slotEndMoment.isAfter(breakStart)) {
+          currentTime.add(slotInterval, 'minutes');
+          continue;
+        }
+      }
 
       // Check overlap with existing appointments
       const isAvailable = !appointments.some(apt => {
-        // Use the same date for both to compare only hours/minutes
-        const aptStartMoment = moment(`${slotStartStr}`, 'HH:mm'); // current loop day context
-        const aptEndMoment = moment(`${slotStartStr}`, 'HH:mm').add(slotDuration, 'minutes');
+        const aptStartMoment = moment(slotStartStr, 'HH:mm');
+        const aptEndMoment = moment(slotStartStr, 'HH:mm').add(slotDuration, 'minutes');
 
         const existingStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
         const existingEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
@@ -113,8 +134,7 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
         slots.push(slotStartStr);
       }
 
-      // Move forward by 30 mins (common interval)
-      currentTime.add(30, 'minutes');
+      currentTime.add(slotInterval, 'minutes');
     }
 
     console.log(`[AVAILABILITY] Result: ${slots.length} slots found. [${slots.join(', ')}]`);
