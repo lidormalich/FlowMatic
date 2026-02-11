@@ -3,6 +3,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { useContext } from 'react';
 import { AuthContext } from './context/AuthContext';
+import { useTheme } from './context/ThemeContext';
 
 // Components
 import Navbar from './components/layout/Navbar';
@@ -33,17 +34,18 @@ import './App.css';
 
 function AppContent() {
   const { isAuthenticated } = useContext(AuthContext);
+  const { isDark } = useTheme();
   const location = useLocation();
 
   // Define public routes where Navbar and Sidebar should be hidden
   const isPublicRoute = location.pathname.startsWith('/book/');
 
   return (
-    <div className="min-h-screen flex flex-col" dir="rtl">
+    <div className={`min-h-screen flex flex-col ${isDark ? 'bg-slate-950 text-slate-200' : ''}`} dir="rtl">
       {!isPublicRoute && <Navbar />}
       <div className="flex flex-1 flex-col md:flex-row">
         {isAuthenticated && !isPublicRoute && <Sidebar />}
-        <main className={`flex-1 ${!isPublicRoute ? 'bg-gray-50' : ''} min-h-[calc(100vh-64px)]`}>
+        <main className={`flex-1 ${!isPublicRoute ? (isDark ? 'bg-slate-950' : 'bg-gray-50') : ''} min-h-[calc(100vh-64px)]`}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />

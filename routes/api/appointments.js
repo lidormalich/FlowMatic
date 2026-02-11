@@ -6,6 +6,7 @@ const moment = require('moment');
 const Event = require('../../models/Event');
 const User = require('../../models/User');
 const AppointmentType = require('../../models/AppointmentType');
+const Client = require('../../models/Client');
 const { sendAppointmentConfirmationSMS, sendAppointmentCancellationSMS } = require('../../services/smsService');
 
 const BUFFER_MINUTES = 5; // מרווח ביטחון בין תורים
@@ -324,6 +325,19 @@ router.post('/public/:username', async (req, res) => {
 
     console.log(`[BOOKING] Found Owner: ${owner.username} (${owner._id})`);
     console.log(`[BOOKING] Customer Info: Name=${customerName}, ID=${customerId || 'guest'}`);
+
+    // Check if client is blocked
+    if (customerPhone) {
+      const blockedClient = await Client.findOne({
+        businessOwnerId: owner._id,
+        phone: customerPhone,
+        isBlocked: true
+      });
+      if (blockedClient) {
+        console.log(`[BOOKING] BLOCKED: Client ${customerPhone} is blocked for owner ${owner._id}`);
+        return res.status(403).json({ message: 'לא ניתן לקבוע תור. אנא צור קשר עם העסק.' });
+      }
+    }
 
     // Get appointment type
     const appointmentType = await AppointmentType.findOne({

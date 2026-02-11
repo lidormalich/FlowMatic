@@ -27,6 +27,14 @@ const ClientSchema = new Schema({
         type: [String],
         default: []
     },
+    isBlocked: {
+        type: Boolean,
+        default: false
+    },
+    blockedReason: {
+        type: String,
+        default: ''
+    },
     totalAppointments: {
         type: Number,
         default: 0

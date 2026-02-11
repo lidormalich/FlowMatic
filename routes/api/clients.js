@@ -226,12 +226,14 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
             return res.status(404).json({ message: 'לקוח לא נמצא' });
         }
 
-        const { name, email, notes, tags } = req.body;
+        const { name, email, notes, tags, isBlocked, blockedReason } = req.body;
 
         if (name) client.name = name;
         if (email !== undefined) client.email = email;
         if (notes !== undefined) client.notes = notes;
         if (tags !== undefined) client.tags = tags;
+        if (isBlocked !== undefined) client.isBlocked = isBlocked;
+        if (blockedReason !== undefined) client.blockedReason = blockedReason;
 
         await client.save();
         res.json(client);

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/he';
@@ -10,6 +10,25 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../hooks/useAppointments';
 import { appointmentTypesApi, clientsApi, reportsApi } from '../../services/api';
 import SkeletonLoader from '../common/SkeletonLoader';
+
+const TAG_ICONS = {
+  'VIP': '👑',
+  'מאחר כרוני': '⏰',
+  'חייב כסף': '💰',
+  'חדש': '⭐',
+  'קבוע': '💙',
+};
+
+const CalendarEvent = ({ event }) => {
+  const tags = event.resource?.clientTags || [];
+  const tagIcons = tags.map(t => TAG_ICONS[t] || '🏷️').join('');
+  return (
+    <span>
+      {tagIcons && <span style={{ marginLeft: 4 }}>{tagIcons}</span>}
+      {event.title}
+    </span>
+  );
+};
 
 moment.locale('he');
 const localizer = momentLocalizer(moment);
@@ -29,6 +48,20 @@ const Events = () => {
     queryKey: ['appointmentTypes'],
     queryFn: appointmentTypesApi.getAll
   });
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients'],
+    queryFn: clientsApi.getAll
+  });
+
+  const clientTagsMap = useMemo(() => {
+    const map = {};
+    (clientsData || []).forEach(c => {
+      if (c.tags?.length > 0) {
+        map[c.phone?.replace(/\D/g, '')] = c.tags;
+      }
+    });
+    return map;
+  }, [clientsData]);
 
   const showHebrewDate = user?.showHebrewDate || false;
   const [view, setView] = useState('calendar');
@@ -155,7 +188,7 @@ const Events = () => {
   const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' }); setClientNotes(''); };
 
   const calendarEvents = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType))
-    .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resource: apt, style: { backgroundColor: type?.color || '#3b82f6' } }; });
+    .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); const phoneClean = apt.customerPhone?.replace(/\D/g, ''); const clientTags = clientTagsMap[phoneClean] || []; return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resource: { ...apt, clientTags }, style: { backgroundColor: type?.color || '#3b82f6' } }; });
 
   const filteredAppointments = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (apt.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || apt.customerPhone.includes(searchQuery) || apt.customerEmail?.toLowerCase().includes(searchQuery.toLowerCase())));
 
@@ -197,7 +230,7 @@ const Events = () => {
       {view === 'calendar' ? (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm" style={{ minHeight: '700px' }}>
           {showHebrewDate && <div className="mb-4 p-3 bg-blue-50 rounded-2xl text-center"><span className="text-lg font-semibold text-blue-600">תאריך עברי: {formatHebrewDate(calendarDate)}</span></div>}
-          <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} />
+          <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} />
         </div>
       ) : (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-sm overflow-hidden">
