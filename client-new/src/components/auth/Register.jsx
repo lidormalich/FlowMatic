@@ -59,8 +59,8 @@ const Register = () => {
         const response = await usersApi.checkUsername(username);
         setUsernameStatus({
           checking: false,
-          available: response.data.available,
-          message: response.data.message
+          available: response.available,
+          message: response.message
         });
       } catch (error) {
         setUsernameStatus({
@@ -112,23 +112,25 @@ const Register = () => {
     register(formData);
   };
 
+  const inputClass = "w-full h-12 bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl px-4 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-700 transition-all duration-200 outline-none";
+
   return (
-    <div className="min-h-[calc(100vh-72px)] flex items-center justify-center bg-slate-50 p-4 md:p-8 relative overflow-hidden">
+    <div className="min-h-[calc(100vh-72px)] flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4 md:p-8 relative overflow-hidden">
       {/* Decorative background blurs */}
       <div className="absolute top-20 right-20 w-72 h-72 bg-blue-400/20 rounded-full blur-3xl" />
       <div className="absolute bottom-20 left-20 w-96 h-96 bg-purple-400/15 rounded-full blur-3xl" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-cyan-400/10 rounded-full blur-3xl" />
 
-      <div className="relative bg-white/70 backdrop-blur-xl border border-white/20 rounded-3xl shadow-sm p-6 md:p-8 w-full max-w-2xl animate-scale-in">
+      <div className="relative bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border border-white/20 dark:border-white/[0.08] rounded-3xl shadow-sm p-6 md:p-8 w-full max-w-2xl animate-scale-in">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">הרשמה למערכת</h2>
-          <p className="text-slate-500">צור חשבון עסקי חדש ב-FlowMatic</p>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white mb-2">הרשמה למערכת</h2>
+          <p className="text-slate-500 dark:text-slate-400">צור חשבון עסקי חדש ב-FlowMatic</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label htmlFor="name" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="name" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               שם מלא <span className="text-red-500">*</span>
             </label>
             <input
@@ -139,15 +141,13 @@ const Register = () => {
               onChange={handleChange}
               placeholder="הכנס שם מלא"
               required
-              className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right
-                       placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                       transition-all duration-200 outline-none"
+              className={`${inputClass} text-right`}
             />
           </div>
 
           {/* Business Name */}
           <div>
-            <label htmlFor="businessName" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="businessName" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               שם העסק <span className="text-red-500">*</span>
             </label>
             <input
@@ -158,16 +158,14 @@ const Register = () => {
               onChange={handleChange}
               placeholder="למשל: סלון יעל"
               required
-              className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right
-                       placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                       transition-all duration-200 outline-none"
+              className={`${inputClass} text-right`}
             />
           </div>
 
           {/* Row: Email & Phone */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="email" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="email" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 אימייל <span className="text-red-500">*</span>
               </label>
               <input
@@ -179,14 +177,12 @@ const Register = () => {
                 placeholder="your@email.com"
                 required
                 dir="ltr"
-                className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-left
-                         placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                         transition-all duration-200 outline-none"
+                className={`${inputClass} text-left`}
               />
             </div>
 
             <div>
-              <label htmlFor="phoneNumber" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="phoneNumber" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 טלפון <span className="text-red-500">*</span>
               </label>
               <input
@@ -198,16 +194,14 @@ const Register = () => {
                 placeholder="050-1234567"
                 required
                 dir="ltr"
-                className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-left
-                         placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                         transition-all duration-200 outline-none"
+                className={`${inputClass} text-left`}
               />
             </div>
           </div>
 
           {/* Username */}
           <div>
-            <label htmlFor="username" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="username" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               שם משתמש (לקישור הציבורי) <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -222,13 +216,13 @@ const Register = () => {
                 dir="ltr"
                 pattern="[a-z0-9\-]+"
                 title="רק אותיות אנגליות קטנות, מספרים ומקפים"
-                className={`w-full h-12 border-0 rounded-2xl pl-12 pr-4 text-slate-900 text-left
-                         placeholder:text-slate-400 focus:ring-2 transition-all duration-200 outline-none ${
+                className={`w-full h-12 border-0 rounded-2xl pl-12 pr-4 text-slate-900 dark:text-white text-left
+                         placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 transition-all duration-200 outline-none ${
                            usernameStatus.available === true
-                             ? 'bg-green-50 focus:ring-green-500'
+                             ? 'bg-green-50 dark:bg-green-900/20 focus:ring-green-500'
                              : usernameStatus.available === false
-                               ? 'bg-red-50 focus:ring-red-500'
-                               : 'bg-slate-100 focus:ring-blue-500 focus:bg-white'
+                               ? 'bg-red-50 dark:bg-red-900/20 focus:ring-red-500'
+                               : 'bg-slate-100 dark:bg-slate-800 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-700'
                          }`}
               />
               {/* Status indicator */}
@@ -252,16 +246,16 @@ const Register = () => {
             {formData.username && usernameStatus.message && (
               <p className={`mt-2 text-sm font-medium text-center py-2 px-3 rounded-xl ${
                 usernameStatus.available === true
-                  ? 'text-green-700 bg-green-100'
+                  ? 'text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30'
                   : usernameStatus.available === false
-                    ? 'text-red-700 bg-red-100'
-                    : 'text-slate-600 bg-slate-100'
+                    ? 'text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30'
+                    : 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800'
               }`}>
                 {usernameStatus.message}
               </p>
             )}
             {formData.username && usernameStatus.available === true && (
-              <p className="mt-2 text-sm text-blue-700 font-medium text-center bg-blue-50 py-2 px-3 rounded-xl flex items-center justify-center gap-2">
+              <p className="mt-2 text-sm text-blue-700 dark:text-blue-400 font-medium text-center bg-blue-50 dark:bg-blue-900/20 py-2 px-3 rounded-xl flex items-center justify-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
@@ -273,7 +267,7 @@ const Register = () => {
           {/* Row: Password & Confirm */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="password" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="password" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 סיסמה <span className="text-red-500">*</span>
               </label>
               <input
@@ -286,14 +280,12 @@ const Register = () => {
                 required
                 dir="ltr"
                 minLength="6"
-                className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-left
-                         placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                         transition-all duration-200 outline-none"
+                className={`${inputClass} text-left`}
               />
             </div>
 
             <div>
-              <label htmlFor="password2" className="block text-right text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="password2" className="block text-right text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 אימות סיסמה <span className="text-red-500">*</span>
               </label>
               <input
@@ -306,9 +298,7 @@ const Register = () => {
                 required
                 dir="ltr"
                 minLength="6"
-                className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-left
-                         placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white
-                         transition-all duration-200 outline-none"
+                className={`${inputClass} text-left`}
               />
             </div>
           </div>
@@ -330,9 +320,9 @@ const Register = () => {
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-slate-500">
+          <p className="text-slate-500 dark:text-slate-400">
             יש לך חשבון?{' '}
-            <Link to="/login" className="text-blue-600 font-semibold hover:text-blue-500 transition-colors">
+            <Link to="/login" className="text-blue-600 dark:text-blue-400 font-semibold hover:text-blue-500 transition-colors">
               התחבר כאן
             </Link>
           </p>

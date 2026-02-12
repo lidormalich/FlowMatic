@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import NotificationBell from '../common/NotificationBell';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useContext(AuthContext);
@@ -63,6 +64,9 @@ const Navbar = () => {
                     {user.credits}
                   </span>
                 )}
+
+                {/* Notifications */}
+                <NotificationBell />
 
                 {/* Dark Mode Toggle */}
                 <button

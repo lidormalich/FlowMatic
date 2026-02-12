@@ -13,7 +13,8 @@
       "Bash(tasklist)",
       "Bash(findstr node)",
       "Bash(del \"c:\\\\Users\\\\lidor-PC\\\\Documents\\\\Git\\\\FlowMatic\\\\client-new\\\\src\\\\service-worker.js\")",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(npx web-push:*)"
     ]
   }
 }

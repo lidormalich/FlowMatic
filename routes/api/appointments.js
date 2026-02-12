@@ -260,12 +260,65 @@ router.get('/stats', passport.authenticate('jwt', { session: false }), async (re
       status: 'completed'
     });
 
+    // Weekly trend: appointments per day for last 7 days
+    const weeklyTrendData = await Event.aggregate([
+      {
+        $match: {
+          businessOwnerId: req.user._id || new (require('mongoose').Types.ObjectId)(req.user.id),
+          date: { $gte: moment().subtract(6, 'days').startOf('day').toDate(), $lte: todayEnd },
+          status: { $in: ['pending', 'confirmed', 'completed'] }
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Fill in missing days with 0
+    const weeklyTrend = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayStr = moment().subtract(i, 'days').format('YYYY-MM-DD');
+      const found = weeklyTrendData.find(d => d._id === dayStr);
+      weeklyTrend.push(found ? found.count : 0);
+    }
+
+    // Monthly revenue trend: revenue per day for last 30 days
+    const monthlyRevenueTrendData = await Event.aggregate([
+      {
+        $match: {
+          businessOwnerId: req.user._id || new (require('mongoose').Types.ObjectId)(req.user.id),
+          date: { $gte: moment().subtract(29, 'days').startOf('day').toDate(), $lte: todayEnd },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+          revenue: { $sum: '$price' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    const monthlyRevenueTrend = [];
+    for (let i = 29; i >= 0; i--) {
+      const dayStr = moment().subtract(i, 'days').format('YYYY-MM-DD');
+      const found = monthlyRevenueTrendData.find(d => d._id === dayStr);
+      monthlyRevenueTrend.push(found ? found.revenue : 0);
+    }
+
     res.json({
       todayAppointments,
       monthlyRevenue,
       newClients,
       upcomingAppointments,
-      completedThisMonth
+      completedThisMonth,
+      weeklyTrend,
+      monthlyRevenueTrend
     });
   } catch (err) {
     console.error('Stats error:', err);
@@ -535,7 +588,35 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
       }
     }
 
+    const oldStatus = appointment.status;
     await appointment.save();
+
+    // Send notification + push on status change
+    if (status && status !== oldStatus && appointment.customerId) {
+      try {
+        const Notification = require('../../models/Notification');
+        const { sendPushToUser } = require('../../utils/pushNotify');
+        const statusLabels = { confirmed: 'אושר', cancelled: 'בוטל', completed: 'הושלם', no_show: 'לא הגיע' };
+        const label = statusLabels[status] || status;
+        const notifTitle = `התור ${label}`;
+        const notifBody = `התור שלך ל${appointment.service || 'שירות'} בתאריך ${moment(appointment.date).format('DD/MM')} בשעה ${appointment.startTime} ${label}`;
+        await Notification.create({
+          userId: appointment.customerId,
+          type: 'status_change',
+          title: notifTitle,
+          body: notifBody,
+          relatedAppointmentId: appointment._id
+        });
+        // Send browser push
+        await sendPushToUser(appointment.customerId, {
+          title: notifTitle,
+          body: notifBody,
+          url: '/my-appointments'
+        });
+      } catch (notifErr) {
+        console.error('Failed to create status notification:', notifErr.message);
+      }
+    }
 
     res.json({ message: 'התור עודכן בהצלחה', appointment });
   } catch (err) {
