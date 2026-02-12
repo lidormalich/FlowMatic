@@ -78,6 +78,14 @@ export const appointmentsApi = {
   cancel: async (id) => {
     const response = await api.delete(`/appointments/${id}`);
     return response.data;
+  },
+  createRecurring: async (data) => {
+    const response = await api.post('/appointments/recurring', data);
+    return response.data;
+  },
+  cancelRecurring: async (groupId) => {
+    const response = await api.delete(`/appointments/recurring/${groupId}`);
+    return response.data;
   }
 };
 
@@ -106,6 +114,7 @@ export const appointmentTypesApi = {
 
 export const reportsApi = {
   getRevenue: (params) => api.get('/reports/revenue', { params }),
+  getHeatmap: (params) => api.get('/reports/heatmap', { params }),
   exportAppointments: () => api.get('/reports/export/appointments', { responseType: 'blob' }),
   exportClients: () => api.get('/reports/export/clients', { responseType: 'blob' }),
 };

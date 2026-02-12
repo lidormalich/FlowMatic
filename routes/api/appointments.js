@@ -25,7 +25,13 @@ const appointmentValidation = Joi.object({
   service: Joi.string().required(),
   price: Joi.number().optional(),
   customerId: Joi.string().optional().allow(null, ''),
-  businessOwnerId: Joi.string().optional().allow(null, '')
+  businessOwnerId: Joi.string().optional().allow(null, ''),
+  additionalServices: Joi.array().items(Joi.object({
+    _id: Joi.string().required(),
+    name: Joi.string().required(),
+    duration: Joi.number().required(),
+    price: Joi.number().optional()
+  })).optional()
 });
 
 // Helper: Calculate Available Slots with Buffer
@@ -136,6 +142,34 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
       }
 
       currentTime.add(slotInterval, 'minutes');
+    }
+
+    // Smart Gap Control: filter out slots that leave gaps smaller than minGapMinutes
+    const minGap = bh.minGapMinutes || 0;
+    if (minGap > 0 && appointments.length > 0) {
+      const existingTimes = appointments.map(apt => ({
+        start: moment(apt.startTime, 'HH:mm'),
+        end: moment(apt.endTime, 'HH:mm')
+      }));
+
+      const filteredSlots = slots.filter(slot => {
+        const slotStart = moment(slot, 'HH:mm');
+        const slotEnd = slotStart.clone().add(slotDuration, 'minutes');
+
+        for (const apt of existingTimes) {
+          // Gap before: between end of new slot and start of existing appointment
+          const gapBefore = apt.start.diff(slotEnd, 'minutes');
+          if (gapBefore > 0 && gapBefore < minGap) return false;
+
+          // Gap after: between end of existing appointment and start of new slot
+          const gapAfter = slotStart.diff(apt.end, 'minutes');
+          if (gapAfter > 0 && gapAfter < minGap) return false;
+        }
+        return true;
+      });
+
+      console.log(`[AVAILABILITY] Smart Gap (${minGap}min): ${slots.length} -> ${filteredSlots.length} slots`);
+      return filteredSlots;
     }
 
     console.log(`[AVAILABILITY] Result: ${slots.length} slots found. [${slots.join(', ')}]`);
@@ -309,7 +343,7 @@ router.post('/public/:username', async (req, res) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId } = value;
+    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId, additionalServices } = value;
 
     // Find business owner (case-insensitive)
     const owner = await User.findOne({
@@ -350,13 +384,22 @@ router.post('/public/:username', async (req, res) => {
       return res.status(404).json({ message: 'סוג תור לא נמצא' });
     }
 
+    // Calculate total duration & price (including additional services)
+    const extraDuration = additionalServices ? additionalServices.reduce((sum, s) => sum + (s.duration || 0), 0) : 0;
+    const extraPrice = additionalServices ? additionalServices.reduce((sum, s) => sum + (s.price || 0), 0) : 0;
+    const totalDuration = appointmentType.duration + extraDuration;
+    const totalPrice = (appointmentType.price || 0) + extraPrice;
+    const serviceNames = additionalServices?.length > 0
+      ? [appointmentType.name, ...additionalServices.map(s => s.name)].join(' + ')
+      : appointmentType.name;
+
     // Calculate end time
     const [hours, minutes] = startTime.split(':');
     const startDateTime = moment(date).hour(parseInt(hours)).minute(parseInt(minutes));
-    const endDateTime = startDateTime.clone().add(appointmentType.duration, 'minutes');
+    const endDateTime = startDateTime.clone().add(totalDuration, 'minutes');
 
     // Check if slot is still available
-    const slots = await calculateAvailableSlots(owner._id, date, appointmentType.duration);
+    const slots = await calculateAvailableSlots(owner._id, date, totalDuration);
     if (!slots.includes(startTime)) {
       return res.status(400).json({ message: 'השעה שנבחרה כבר תפוסה' });
     }
@@ -372,9 +415,9 @@ router.post('/public/:username', async (req, res) => {
       date: moment(date).toDate(),
       startTime,
       endTime: endDateTime.format('HH:mm'),
-      duration: appointmentType.duration,
-      service: appointmentType.name,
-      price: appointmentType.price,
+      duration: totalDuration,
+      service: serviceNames,
+      price: totalPrice,
       description: description || '',
       status: 'pending'
     });
@@ -461,24 +504,27 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
     }
 
     // Update allowed fields
-    const { status, customerName, customerPhone, customerEmail, date, startTime, description } = req.body;
+    const { status, customerName, customerPhone, customerEmail, date, startTime, endTime, duration, description } = req.body;
 
     if (status) appointment.status = status;
     if (customerName) appointment.customerName = customerName;
     if (customerPhone) appointment.customerPhone = customerPhone;
     if (customerEmail !== undefined) appointment.customerEmail = customerEmail;
     if (description !== undefined) appointment.description = description;
+    if (duration) appointment.duration = duration;
 
     if (date || startTime) {
-      // Recalculate end time if time changes
-      const appointmentType = await AppointmentType.findById(appointment.appointmentTypeId);
-
       if (date) appointment.date = moment(date).toDate();
-      if (startTime) {
-        appointment.startTime = startTime;
-        const [hours, minutes] = startTime.split(':');
+      if (startTime) appointment.startTime = startTime;
+
+      if (endTime) {
+        appointment.endTime = endTime;
+      } else {
+        // Recalculate end time from duration
+        const appointmentType = await AppointmentType.findById(appointment.appointmentTypeId);
+        const [hours, minutes] = (startTime || appointment.startTime).split(':');
         const startDateTime = moment(appointment.date).hour(parseInt(hours)).minute(parseInt(minutes));
-        appointment.endTime = startDateTime.clone().add(appointmentType.duration, 'minutes').format('HH:mm');
+        appointment.endTime = startDateTime.clone().add(duration || appointmentType.duration, 'minutes').format('HH:mm');
       }
     }
 
@@ -557,6 +603,80 @@ router.post('/:id/cancel', async (req, res) => {
     }
 
     res.json({ message: 'התור בוטל בהצלחה' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// POST /api/appointments/recurring - Create recurring appointments
+router.post('/recurring', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const { customerName, customerPhone, customerEmail, date, startTime, duration, service, price, frequency, endDate, description } = req.body;
+
+    if (!customerName || !customerPhone || !date || !startTime || !duration || !service || !frequency || !endDate) {
+      return res.status(400).json({ message: 'נא למלא את כל השדות הנדרשים' });
+    }
+
+    const groupId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const startMoment = moment(date);
+    const endMoment = moment(endDate);
+    const appointments = [];
+
+    let current = startMoment.clone();
+    const maxOccurrences = 52;
+    let count = 0;
+
+    while (current.isSameOrBefore(endMoment) && count < maxOccurrences) {
+      const [h, m] = startTime.split(':');
+      const start = current.clone().hour(parseInt(h)).minute(parseInt(m));
+      const end = start.clone().add(duration, 'minutes');
+
+      appointments.push({
+        businessOwnerId: req.user.id,
+        customerName,
+        customerPhone,
+        customerEmail: customerEmail || '',
+        date: current.toDate(),
+        startTime,
+        endTime: end.format('HH:mm'),
+        duration,
+        service,
+        price: price || 0,
+        description: description || '',
+        status: 'confirmed',
+        isRecurring: true,
+        recurrenceRule: { frequency, endDate: endMoment.toDate() },
+        recurrenceGroupId: groupId
+      });
+
+      count++;
+      if (frequency === 'weekly') current.add(1, 'week');
+      else if (frequency === 'biweekly') current.add(2, 'weeks');
+      else if (frequency === 'monthly') current.add(1, 'month');
+    }
+
+    const created = await Event.insertMany(appointments);
+    res.json({ message: `נוצרו ${created.length} תורים חוזרים`, count: created.length, groupId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// DELETE /api/appointments/recurring/:groupId - Cancel all future recurring appointments
+router.delete('/recurring/:groupId', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const result = await Event.updateMany(
+      {
+        businessOwnerId: req.user.id,
+        recurrenceGroupId: req.params.groupId,
+        date: { $gte: new Date() },
+        status: { $nin: ['cancelled', 'completed'] }
+      },
+      { $set: { status: 'cancelled' } }
+    );
+    res.json({ message: `בוטלו ${result.modifiedCount} תורים עתידיים`, cancelled: result.modifiedCount });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'שגיאת שרת' });

@@ -38,7 +38,8 @@ const BusinessSettings = () => {
                 startMinute: 0,
                 endHour: 13,
                 endMinute: 0
-            }
+            },
+            minGapMinutes: 0
         },
 
         // Display Settings
@@ -89,7 +90,8 @@ const BusinessSettings = () => {
                         startMinute: userData.businessHours?.breakTime?.startMinute ?? 0,
                         endHour: userData.businessHours?.breakTime?.endHour ?? 13,
                         endMinute: userData.businessHours?.breakTime?.endMinute ?? 0
-                    }
+                    },
+                    minGapMinutes: userData.businessHours?.minGapMinutes ?? 0
                 },
                 showHebrewDate: userData.showHebrewDate ?? false,
                 themeSettings: {
@@ -463,6 +465,27 @@ const BusinessSettings = () => {
                                     </p>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Smart Gap Control */}
+                        <div className="bg-purple-50 rounded-2xl p-5 border border-purple-200">
+                            <label className="block text-sm font-semibold text-purple-800 mb-3">מרווח מינימלי בין תורים (Smart Gap)</label>
+                            <p className="text-xs text-purple-600 mb-3">סלוטים שמשאירים חור קטן מדי בין תורים קיימים יוסתרו אוטומטית</p>
+                            <div className="flex flex-wrap gap-2">
+                                {[0, 10, 15, 20, 30].map(gap => (
+                                    <button
+                                        key={gap}
+                                        type="button"
+                                        onClick={() => handleNestedChange('businessHours', 'minGapMinutes', gap)}
+                                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${formData.businessHours.minGapMinutes === gap
+                                            ? 'bg-purple-600 text-white shadow-md'
+                                            : 'bg-white text-purple-700 hover:bg-purple-100'
+                                        }`}
+                                    >
+                                        {gap === 0 ? 'ללא' : `${gap} דקות`}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 )}

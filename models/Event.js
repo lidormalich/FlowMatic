@@ -70,6 +70,18 @@ const eventSchema = new Schema({
         type: Number,
         default: 0
     },
+    isRecurring: {
+        type: Boolean,
+        default: false
+    },
+    recurrenceRule: {
+        frequency: { type: String, enum: ['weekly', 'biweekly', 'monthly'], default: 'weekly' },
+        endDate: { type: Date }
+    },
+    recurrenceGroupId: {
+        type: String,
+        default: null
+    },
     smsSent: {
         type: Boolean,
         default: false

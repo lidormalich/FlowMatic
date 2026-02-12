@@ -11,7 +11,7 @@ router.get('/', passport.authenticate('jwt', { session: false }), async (req, re
         const appointmentTypes = await AppointmentType.find({
             userId: req.user.id,
             isActive: true
-        }).sort({ createdAt: -1 });
+        }).populate('relatedServices', 'name price duration').sort({ createdAt: -1 });
 
         res.json(appointmentTypes);
     } catch (err) {
@@ -39,7 +39,7 @@ router.get('/user/:username', async (req, res) => {
         const appointmentTypes = await AppointmentType.find({
             userId: user._id,
             isActive: true
-        }).sort({ name: 1 });
+        }).populate('relatedServices', 'name price duration description').sort({ name: 1 });
 
         res.json(appointmentTypes);
     } catch (err) {
@@ -53,7 +53,7 @@ router.get('/user/:username', async (req, res) => {
 // @access  Private
 router.post('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
     try {
-        const { name, description, duration, price, color } = req.body;
+        const { name, description, duration, price, color, relatedServices, images } = req.body;
 
         // Validation
         if (!name || !duration) {
@@ -66,7 +66,9 @@ router.post('/', passport.authenticate('jwt', { session: false }), async (req, r
             description,
             duration,
             price,
-            color: color || '#667eea'
+            color: color || '#667eea',
+            relatedServices: relatedServices || [],
+            images: images || []
         });
 
         const savedAppointmentType = await newAppointmentType.save();
@@ -91,7 +93,7 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
             return res.status(404).json({ message: 'סוג תור לא נמצא' });
         }
 
-        const { name, description, duration, price, color, isActive } = req.body;
+        const { name, description, duration, price, color, isActive, relatedServices, images } = req.body;
 
         if (name) appointmentType.name = name;
         if (description !== undefined) appointmentType.description = description;
@@ -99,6 +101,8 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
         if (price !== undefined) appointmentType.price = price;
         if (color) appointmentType.color = color;
         if (isActive !== undefined) appointmentType.isActive = isActive;
+        if (relatedServices !== undefined) appointmentType.relatedServices = relatedServices;
+        if (images !== undefined) appointmentType.images = images;
 
         const updatedAppointmentType = await appointmentType.save();
         res.json(updatedAppointmentType);
