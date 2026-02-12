@@ -26,6 +26,7 @@ import Clients from './components/pages/Clients';
 import Reports from './components/pages/Reports';
 import Staff from './components/pages/Staff';
 import Waitlist from './components/pages/Waitlist';
+import Inventory from './components/pages/Inventory';
 import Templates from './components/pages/Templates';
 import MyAppointments from './components/pages/MyAppointments';
 import NotFound from './components/pages/NotFound';
@@ -124,6 +125,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <Waitlist />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <PrivateRoute>
+                  <Inventory />
                 </PrivateRoute>
               }
             />

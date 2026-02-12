@@ -147,6 +147,14 @@ export const staffApi = {
     const response = await api.get('/staff');
     return response.data;
   },
+  getByService: async (serviceId) => {
+    const response = await api.get(`/staff/by-service/${serviceId}`);
+    return response.data;
+  },
+  getPublic: async (username) => {
+    const response = await api.get(`/staff/public/${username}`);
+    return response.data;
+  },
   create: async (data) => {
     const response = await api.post('/staff', data);
     return response.data;
@@ -157,6 +165,33 @@ export const staffApi = {
   },
   delete: async (id) => {
     const response = await api.delete(`/staff/${id}`);
+    return response.data;
+  }
+};
+
+export const inventoryApi = {
+  getAll: async () => {
+    const response = await api.get('/inventory');
+    return response.data;
+  },
+  getLowStock: async () => {
+    const response = await api.get('/inventory/low-stock');
+    return response.data;
+  },
+  create: async (data) => {
+    const response = await api.post('/inventory', data);
+    return response.data;
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/inventory/${id}`, data);
+    return response.data;
+  },
+  adjust: async (id, amount) => {
+    const response = await api.put(`/inventory/${id}/adjust`, { amount });
+    return response.data;
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/inventory/${id}`);
     return response.data;
   }
 };

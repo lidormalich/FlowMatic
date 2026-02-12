@@ -14,6 +14,7 @@ const reports = require('./routes/api/reports');
 const staff = require('./routes/api/staff');
 const templates = require('./routes/api/templates');
 const waitlist = require('./routes/api/waitlist');
+const inventory = require('./routes/api/inventory');
 require('dotenv').config();
 
 require('./config/passport')(passport);
@@ -69,6 +70,7 @@ app.use('/api/reports', reports);
 app.use('/api/staff', staff);
 app.use('/api/templates', templates);
 app.use('/api/waitlist', waitlist);
+app.use('/api/inventory', inventory);
 
 app.use(express.static(path.join(__dirname, 'client-new/build')));
 

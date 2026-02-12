@@ -27,6 +27,9 @@ const PublicBooking = () => {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [showUpsell, setShowUpsell] = useState(false);
   const [additionalServices, setAdditionalServices] = useState([]);
+  const [staffMembers, setStaffMembers] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+  const [showTimesModal, setShowTimesModal] = useState(false);
 
   const [currentMonth, setCurrentMonth] = useState(moment());
   const [formData, setFormData] = useState({
@@ -52,10 +55,10 @@ const PublicBooking = () => {
   }, [formData.date, businessOwner?.showHebrewDate]);
 
   useEffect(() => {
-    if (formData.date && businessOwner && selectedType) {
+    if (formData.date && businessOwner && selectedType && showTimesModal) {
       fetchAvailableTimes();
     }
-  }, [formData.date, selectedType, businessOwner, additionalServices]);
+  }, [formData.date, selectedType, businessOwner, additionalServices, selectedStaff, showTimesModal]);
 
   const fetchBusinessOwner = async () => {
     try {
@@ -70,6 +73,12 @@ const PublicBooking = () => {
 
       const typesRes = await axios.get(`/api/appointment-types/user/${username}`);
       setAppointmentTypes(typesRes.data);
+
+      try {
+        const staffRes = await axios.get(`/api/staff/public/${username}`);
+        setStaffMembers(staffRes.data || []);
+      } catch (e) { /* Staff endpoint may not exist yet */ }
+
       setLoading(false);
     } catch (err) {
       toast.error('העסק לא נמצא');
@@ -80,12 +89,12 @@ const PublicBooking = () => {
   const fetchAvailableTimes = async () => {
     setLoadingTimes(true);
     try {
-      const res = await axios.get(`/api/appointments/available/${username}`, {
-        params: {
-          date: formData.date,
-          duration: getTotalDuration() || selectedType?.duration || 60,
-        },
-      });
+      const params = {
+        date: formData.date,
+        duration: getTotalDuration() || selectedType?.duration || 60,
+      };
+      if (selectedStaff) params.staffId = selectedStaff._id;
+      const res = await axios.get(`/api/appointments/available/${username}`, { params });
       setAvailableTimes(res.data.times || []);
     } catch (err) {
       setAvailableTimes([]);
@@ -97,9 +106,14 @@ const PublicBooking = () => {
   const handleServiceSelect = (type) => {
     setSelectedType(type);
     setAdditionalServices([]);
+    setSelectedStaff(null);
+    const serviceStaff = staffMembers.filter(s => s.services?.includes(type._id));
     if (type.relatedServices?.length > 0) {
       setShowUpsell(true);
+    } else if (serviceStaff.length > 1) {
+      setStep(1.5);
     } else {
+      if (serviceStaff.length === 1) setSelectedStaff(serviceStaff[0]);
       setStep(2);
     }
   };
@@ -112,15 +126,25 @@ const PublicBooking = () => {
     );
   };
 
+  const goAfterUpsell = () => {
+    const serviceStaff = staffMembers.filter(s => s.services?.includes(selectedType?._id));
+    if (serviceStaff.length > 1) {
+      setStep(1.5);
+    } else {
+      if (serviceStaff.length === 1) setSelectedStaff(serviceStaff[0]);
+      setStep(2);
+    }
+  };
+
   const confirmUpsell = () => {
     setShowUpsell(false);
-    setStep(2);
+    goAfterUpsell();
   };
 
   const skipUpsell = () => {
     setAdditionalServices([]);
     setShowUpsell(false);
-    setStep(2);
+    goAfterUpsell();
   };
 
   const getTotalDuration = () => {
@@ -135,8 +159,15 @@ const PublicBooking = () => {
     return base + extra;
   };
 
+  const handleDateSelect = (date) => {
+    setFormData({ ...formData, date: date.format('YYYY-MM-DD'), time: '' });
+    setShowTimesModal(true);
+  };
+
   const handleTimeSelect = (time) => {
-    setFormData({ ...formData, time });
+    setFormData(prev => ({ ...prev, time }));
+    setShowTimesModal(false);
+    setStep(3);
   };
 
   const handleInputChange = (e) => {
@@ -168,6 +199,7 @@ const PublicBooking = () => {
         service: serviceNames,
         price: totalPrice,
         additionalServices: additionalServices.map(s => ({ _id: s._id, name: s.name, duration: s.duration, price: s.price })),
+        staffId: selectedStaff?._id || null,
       };
 
       await axios.post(`/api/appointments/public/${username}`, appointmentData);
@@ -179,14 +211,12 @@ const PublicBooking = () => {
     }
   };
 
-  // Calendar - RTL: Sunday (day 0) first on right
+  // Calendar
   const renderCalendar = () => {
     const startOfMonth = currentMonth.clone().startOf('month');
     const endOfMonth = currentMonth.clone().endOf('month');
     const days = [];
 
-    // Padding: startOfMonth.day() gives 0=Sunday, 1=Monday, ...
-    // In RTL grid, Sunday is first column (right), so padding = day index
     const startPadding = startOfMonth.day();
     for (let i = 0; i < startPadding; i++) {
       days.push({ date: startOfMonth.clone().subtract(startPadding - i, 'days'), isPadding: true });
@@ -233,7 +263,7 @@ const PublicBooking = () => {
   if (loading) {
     return (
       <div className="public-booking-page">
-        <div className="booking-card" style={{ opacity: 0.5 }}>
+        <div className="booking-card" style={{ opacity: 0.5, justifyContent: 'center', alignItems: 'center' }}>
           <SkeletonLoader type="card" count={3} />
         </div>
       </div>
@@ -248,7 +278,7 @@ const PublicBooking = () => {
       <div className="booking-bg-blur-3" />
 
       <div className="booking-card">
-        {/* Header */}
+        {/* Header - Fixed top */}
         <div className="booking-header">
           {businessOwner?.themeSettings?.logoUrl ? (
             <img src={businessOwner.themeSettings.logoUrl} alt={businessOwner.businessName} className="business-logo-lg" />
@@ -260,358 +290,363 @@ const PublicBooking = () => {
           )}
         </div>
 
-        {/* Step Dots */}
+        {/* Step Dots - Fixed */}
         {step < 4 && (
           <div className="steps-wrapper">
             <div className="steps-bar">
               {[1, 2, 3].map((s) => (
                 <div
                   key={s}
-                  className={`step-dot ${s === step ? 'active' : ''} ${s < step ? 'completed' : ''}`}
+                  className={`step-dot ${s === Math.floor(step) ? 'active' : ''} ${s < Math.floor(step) ? 'completed' : ''}`}
                 />
               ))}
             </div>
           </div>
         )}
 
-        {/* Step 1: Select Service */}
-        {step === 1 && (
-          <div>
-            <h3 className="section-header">בחר שירות</h3>
-            <div className="service-grid-new">
-              {appointmentTypes.map((type) => (
-                <div
-                  key={type._id}
-                  className={`service-box ${selectedType?._id === type._id ? 'selected' : ''}`}
-                  onClick={() => handleServiceSelect(type)}
-                >
-                  {type.images?.length > 0 ? (
-                    <img
-                      src={type.images[0]}
-                      alt={type.name}
-                      style={{ width: '3.5rem', height: '3.5rem', objectFit: 'cover', borderRadius: '0.75rem', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <div className="service-box-icon">{getIcon(type.name)}</div>
-                  )}
-                  <div className="service-box-info">
-                    <span className="service-box-name">{type.name}</span>
-                    {type.description && (
-                      <span className="service-box-desc">{type.description.substring(0, 50)}</span>
+        {/* Scrollable Content Area */}
+        <div className="booking-content">
+          {/* Step 1: Select Service */}
+          {step === 1 && (
+            <div>
+              <h3 className="section-header">בחר שירות</h3>
+              <div className="service-grid-new">
+                {appointmentTypes.map((type) => (
+                  <div
+                    key={type._id}
+                    className={`service-box ${selectedType?._id === type._id ? 'selected' : ''}`}
+                    onClick={() => handleServiceSelect(type)}
+                  >
+                    {type.images?.length > 0 ? (
+                      <img
+                        src={type.images[0]}
+                        alt={type.name}
+                        style={{ width: '3.5rem', height: '3.5rem', objectFit: 'cover', borderRadius: '0.75rem', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div className="service-box-icon">{getIcon(type.name)}</div>
                     )}
-                    <div className="service-box-meta">
-                      {type.duration && <span>{type.duration} דק׳</span>}
-                      {type.price > 0 && <span>₪{type.price}</span>}
+                    <div className="service-box-info">
+                      <span className="service-box-name">{type.name}</span>
+                      {type.description && (
+                        <span className="service-box-desc">{type.description.substring(0, 50)}</span>
+                      )}
+                      <div className="service-box-meta">
+                        {type.duration && <span>{type.duration} דק׳</span>}
+                        {type.price > 0 && <span>₪{type.price}</span>}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Upsell Popup */}
-        {showUpsell && selectedType?.relatedServices?.length > 0 && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ backdropFilter: 'blur(4px)' }}>
-            <div style={{
-              background: 'rgba(255,255,255,0.95)',
-              backdropFilter: 'blur(20px)',
-              borderRadius: '1.5rem',
-              maxWidth: '28rem',
-              width: '100%',
-              padding: '2rem',
-              boxShadow: '0 25px 60px rgba(0,0,0,0.15)',
-              direction: 'rtl'
-            }}>
-              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.5rem' }}>
-                  שירותים משלימים
-                </h3>
-                <p style={{ fontSize: '0.875rem', color: '#64748b' }}>
-                  רוצה להוסיף עוד שירות לתור?
-                </p>
+                ))}
               </div>
+            </div>
+          )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                {selectedType.relatedServices.map(rs => {
-                  const isSelected = additionalServices.find(s => s._id === rs._id);
-                  return (
-                    <div
-                      key={rs._id}
-                      onClick={() => toggleAdditionalService(rs)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        padding: '0.875rem 1rem',
-                        borderRadius: '1rem',
-                        border: isSelected ? '2px solid var(--primary-color, #6366f1)' : '2px solid #e2e8f0',
-                        background: isSelected ? 'rgba(99,102,241,0.05)' : 'white',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      <div style={{
-                        width: '1.5rem',
-                        height: '1.5rem',
-                        borderRadius: '0.5rem',
-                        border: isSelected ? 'none' : '2px solid #cbd5e1',
-                        background: isSelected ? 'var(--primary-color, #6366f1)' : 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        {isSelected && <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{rs.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.125rem' }}>
-                          {rs.duration} דק׳ {rs.price > 0 && `• ₪${rs.price}`}
+          {/* Step 1.5: Staff Selection */}
+          {step === 1.5 && selectedType && (
+            <div>
+              <h3 className="section-header">בחר מטפל</h3>
+              <div className="service-grid-new">
+                {staffMembers.filter(s => s.services?.includes(selectedType._id)).map(staff => (
+                  <div
+                    key={staff._id}
+                    className={`service-box ${selectedStaff?._id === staff._id ? 'selected' : ''}`}
+                    onClick={() => { setSelectedStaff(staff); setStep(2); }}
+                  >
+                    <div className="service-box-icon" style={{ backgroundColor: staff.color || '#667eea', width: '3rem', height: '3rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '1.25rem', fontWeight: 700 }}>
+                      {staff.name.charAt(0)}
+                    </div>
+                    <div className="service-box-info">
+                      <span className="service-box-name">{staff.name}</span>
+                      <span className="service-box-desc">{staff.role}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '1rem' }}>
+                <button className="btn-secondary-glass" onClick={() => setStep(1)}>חזור</button>
+              </div>
+            </div>
+          )}
+
+          {/* Upsell Popup */}
+          {showUpsell && selectedType?.relatedServices?.length > 0 && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ backdropFilter: 'blur(4px)' }}>
+              <div style={{
+                background: 'rgba(255,255,255,0.95)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '1.5rem',
+                maxWidth: '28rem',
+                width: '100%',
+                padding: '2rem',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.15)',
+                direction: 'rtl'
+              }}>
+                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.5rem' }}>
+                    שירותים משלימים
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                    רוצה להוסיף עוד שירות לתור?
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  {selectedType.relatedServices.map(rs => {
+                    const isChecked = additionalServices.find(s => s._id === rs._id);
+                    return (
+                      <div
+                        key={rs._id}
+                        onClick={() => toggleAdditionalService(rs)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          padding: '0.875rem 1rem',
+                          borderRadius: '1rem',
+                          border: isChecked ? '2px solid var(--primary-color, #6366f1)' : '2px solid #e2e8f0',
+                          background: isChecked ? 'rgba(99,102,241,0.05)' : 'white',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div style={{
+                          width: '1.5rem',
+                          height: '1.5rem',
+                          borderRadius: '0.5rem',
+                          border: isChecked ? 'none' : '2px solid #cbd5e1',
+                          background: isChecked ? 'var(--primary-color, #6366f1)' : 'white',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {isChecked && <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{rs.name}</div>
+                          <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.125rem' }}>
+                            {rs.duration} דק׳ {rs.price > 0 && `• ₪${rs.price}`}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {additionalServices.length > 0 && (
-                <div style={{
-                  background: 'rgba(99,102,241,0.05)',
-                  borderRadius: '0.75rem',
-                  padding: '0.75rem 1rem',
-                  marginBottom: '1rem',
-                  fontSize: '0.875rem',
-                  color: '#4f46e5',
-                  fontWeight: 600,
-                  textAlign: 'center'
-                }}>
-                  סה״כ: {getTotalDuration()} דק׳ • ₪{getTotalPrice()}
+                    );
+                  })}
                 </div>
-              )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <button
-                  onClick={confirmUpsell}
-                  className="btn-primary-glass"
-                  style={{ width: '100%' }}
-                >
-                  {additionalServices.length > 0 ? `המשך עם ${additionalServices.length + 1} שירותים` : 'המשך'}
-                </button>
                 {additionalServices.length > 0 && (
+                  <div style={{
+                    background: 'rgba(99,102,241,0.05)',
+                    borderRadius: '0.75rem',
+                    padding: '0.75rem 1rem',
+                    marginBottom: '1rem',
+                    fontSize: '0.875rem',
+                    color: '#4f46e5',
+                    fontWeight: 600,
+                    textAlign: 'center'
+                  }}>
+                    סה״כ: {getTotalDuration()} דק׳ • ₪{getTotalPrice()}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <button
-                    onClick={skipUpsell}
-                    className="btn-secondary-glass"
+                    onClick={confirmUpsell}
+                    className="btn-primary-glass"
                     style={{ width: '100%' }}
                   >
-                    המשך בלי תוספות
+                    {additionalServices.length > 0 ? `המשך עם ${additionalServices.length + 1} שירותים` : 'המשך'}
                   </button>
-                )}
-                {additionalServices.length === 0 && (
+                  {additionalServices.length > 0 && (
+                    <button
+                      onClick={skipUpsell}
+                      className="btn-secondary-glass"
+                      style={{ width: '100%' }}
+                    >
+                      המשך בלי תוספות
+                    </button>
+                  )}
+                  {additionalServices.length === 0 && (
+                    <button
+                      onClick={skipUpsell}
+                      className="btn-secondary-glass"
+                      style={{ width: '100%' }}
+                    >
+                      לא תודה, המשך
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Date Selection (Calendar only - times in modal) */}
+          {step === 2 && (
+            <div>
+              <h3 className="section-header">בחר תאריך</h3>
+
+              {/* Calendar */}
+              <div className="calendar-card">
+                <div className="calendar-top">
                   <button
-                    onClick={skipUpsell}
-                    className="btn-secondary-glass"
-                    style={{ width: '100%' }}
-                  >
-                    לא תודה, המשך
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                    className="calendar-nav-btn"
+                    onClick={() => setCurrentMonth(currentMonth.clone().subtract(1, 'month'))}
+                  >‹</button>
+                  <span className="month-label">{currentMonth.format('MMMM YYYY')}</span>
+                  <button
+                    className="calendar-nav-btn"
+                    onClick={() => setCurrentMonth(currentMonth.clone().add(1, 'month'))}
+                  >›</button>
+                </div>
 
-        {/* Step 2: Date & Time */}
-        {step === 2 && (
-          <div>
-            <h3 className="section-header">בחר תאריך ושעה</h3>
+                <div className="calendar-grid-header">
+                  {DAY_HEADERS.map((day) => (
+                    <span key={day}>{day}</span>
+                  ))}
+                </div>
 
-            {/* Calendar */}
-            <div className="calendar-card">
-              <div className="calendar-top">
-                <button
-                  className="calendar-nav-btn"
-                  onClick={() => setCurrentMonth(currentMonth.clone().subtract(1, 'month'))}
-                >‹
-
-                </button>
-                <span className="month-label">{currentMonth.format('MMMM YYYY')}</span>
-                <button
-                  className="calendar-nav-btn"
-                  onClick={() => setCurrentMonth(currentMonth.clone().add(1, 'month'))}
-                >
-                  ›
-                </button>
+                <div className="calendar-grid">
+                  {renderCalendar().map((day, idx) => (
+                    <div
+                      key={idx}
+                      className={`calendar-day ${day.isPadding ? 'padding' : ''} ${!day.isPadding && isSelected(day.date) ? 'selected' : ''} ${!day.isPadding && isToday(day.date) ? 'today' : ''} ${!day.isPadding && isPast(day.date) ? 'disabled' : ''}`}
+                      onClick={() => !day.isPadding && !isPast(day.date) && handleDateSelect(day.date)}
+                    >
+                      {day.isPadding ? '' : day.date.date()}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Day headers - RTL: ראשון on right, שבת on left */}
-              <div className="calendar-grid-header">
-                {DAY_HEADERS.map((day) => (
-                  <span key={day}>{day}</span>
-                ))}
-              </div>
-
-              {/* Calendar days grid - RTL direction */}
-              <div className="calendar-grid">
-                {renderCalendar().map((day, idx) => (
-                  <div
-                    key={idx}
-                    className={`calendar-day ${day.isPadding ? 'padding' : ''} ${!day.isPadding && isSelected(day.date) ? 'selected' : ''} ${!day.isPadding && isToday(day.date) ? 'today' : ''} ${!day.isPadding && isPast(day.date) ? 'disabled' : ''}`}
-                    onClick={() => !day.isPadding && !isPast(day.date) && setFormData({ ...formData, date: day.date.format('YYYY-MM-DD'), time: '' })}
-                  >
-                    {day.isPadding ? '' : day.date.date()}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Hebrew Date */}
-            {hebrewDate && (
-              <div className="hebrew-date-badge">
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span>{hebrewDate}</span>
-              </div>
-            )}
-
-            {/* Time Selection */}
-            <h3 className="section-header">בחר שעה</h3>
-            {loadingTimes ? (
-              <div className="loading-spinner"><div /></div>
-            ) : availableTimes.length > 0 ? (
-              <div className="time-chips-grid">
-                {availableTimes.map((t) => (
-                  <div
-                    key={t}
-                    className={`time-chip ${formData.time === t ? 'selected' : ''}`}
-                    onClick={() => handleTimeSelect(t)}
-                  >
-                    {t}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-times">
-                <p>אין תורים פנויים לתאריך זה</p>
-                <p>נסה לבחור תאריך אחר</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Customer Details */}
-        {step === 3 && (
-          <div>
-            <h3 className="section-header">פרטים אחרונים</h3>
-            <div className="glass-input-group">
-              <div className="glass-field">
-                <label className="glass-label">שם מלא</label>
-                <input
-                  type="text"
-                  name="customerName"
-                  className="glass-input"
-                  placeholder="הכנס שם מלא"
-                  value={formData.customerName}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="glass-field">
-                <label className="glass-label">טלפון</label>
-                <input
-                  type="tel"
-                  name="customerPhone"
-                  className="glass-input"
-                  dir="ltr"
-                  style={{ textAlign: 'left' }}
-                  placeholder="05X-XXXXXXX"
-                  value={formData.customerPhone}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="glass-field">
-                <label className="glass-label">אימייל (אופציונלי)</label>
-                <input
-                  type="email"
-                  name="customerEmail"
-                  className="glass-input"
-                  dir="ltr"
-                  style={{ textAlign: 'left' }}
-                  placeholder="name@example.com"
-                  value={formData.customerEmail}
-                  onChange={handleInputChange}
-                />
-              </div>
-            </div>
-
-            {/* Booking Summary */}
-            <div className="summary-card">
-              <p className="summary-card-title">{selectedType?.name}</p>
-              {additionalServices.length > 0 && (
-                <div style={{ fontSize: '0.85rem', color: '#6366f1', marginBottom: '0.25rem' }}>
-                  + {additionalServices.map(s => s.name).join(', ')}
+              {/* Hebrew Date */}
+              {hebrewDate && (
+                <div className="hebrew-date-badge">
+                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>{hebrewDate}</span>
                 </div>
               )}
-              <div className="summary-card-detail">
-                <p>{moment(formData.date).format('dddd, D בMMMM YYYY')} • {formData.time}</p>
-                {hebrewDate && <p>{hebrewDate}</p>}
-                <p>{getTotalDuration()} דקות • ₪{getTotalPrice()}</p>
+
+              <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                לחץ על תאריך לצפייה בשעות הפנויות
+              </p>
+            </div>
+          )}
+
+          {/* Step 3: Customer Details */}
+          {step === 3 && (
+            <div>
+              <h3 className="section-header">פרטים אחרונים</h3>
+              <div className="glass-input-group">
+                <div className="glass-field">
+                  <label className="glass-label">שם מלא</label>
+                  <input
+                    type="text"
+                    name="customerName"
+                    className="glass-input"
+                    placeholder="הכנס שם מלא"
+                    value={formData.customerName}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="glass-field">
+                  <label className="glass-label">טלפון</label>
+                  <input
+                    type="tel"
+                    name="customerPhone"
+                    className="glass-input"
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    placeholder="05X-XXXXXXX"
+                    value={formData.customerPhone}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="glass-field">
+                  <label className="glass-label">אימייל (אופציונלי)</label>
+                  <input
+                    type="email"
+                    name="customerEmail"
+                    className="glass-input"
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    placeholder="name@example.com"
+                    value={formData.customerEmail}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
+
+              {/* Booking Summary */}
+              <div className="summary-card">
+                <p className="summary-card-title">{selectedType?.name}</p>
+                {additionalServices.length > 0 && (
+                  <div style={{ fontSize: '0.85rem', color: '#6366f1', marginBottom: '0.25rem' }}>
+                    + {additionalServices.map(s => s.name).join(', ')}
+                  </div>
+                )}
+                <div className="summary-card-detail">
+                  <p>{moment(formData.date).format('dddd, D בMMMM YYYY')} • {formData.time}</p>
+                  {hebrewDate && <p>{hebrewDate}</p>}
+                  <p>{getTotalDuration()} דקות • ₪{getTotalPrice()}</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Step 4: Success */}
-        {step === 4 && (
-          <div className="success-view-new">
-            <div className="success-icon-wrapper">
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginBottom: '0.75rem', letterSpacing: '-0.025em', color: '#0f172a' }}>
-              התור נקבע בהצלחה!
-            </h2>
-            <p style={{ fontSize: '1rem', color: '#64748b', marginBottom: '0.5rem', lineHeight: 1.6 }}>
-              {selectedType?.name} • {moment(formData.date).format('dddd, D בMMMM')}
-              <br />
-              בשעה {formData.time}
-            </p>
-            {hebrewDate && (
-              <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1.5rem' }}>
-                {hebrewDate}
-              </p>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginTop: '1.5rem' }}>
-              <a
-                href={generateGoogleCalendarUrl()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-primary-glass"
-              >
-                <svg style={{ width: 20, height: 20 }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          {/* Step 4: Success */}
+          {step === 4 && (
+            <div className="success-view-new">
+              <div className="success-icon-wrapper">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                 </svg>
-                הוסף ליומן Google
-              </a>
-              <button
-                className="btn-secondary-glass"
-                onClick={() => window.location.reload()}
-              >
-                קבע תור נוסף
-              </button>
+              </div>
+              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginBottom: '0.75rem', letterSpacing: '-0.025em', color: '#0f172a' }}>
+                התור נקבע בהצלחה!
+              </h2>
+              <p style={{ fontSize: '1rem', color: '#64748b', marginBottom: '0.5rem', lineHeight: 1.6 }}>
+                {selectedType?.name} • {moment(formData.date).format('dddd, D בMMMM')}
+                <br />
+                בשעה {formData.time}
+              </p>
+              {hebrewDate && (
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '1.5rem' }}>
+                  {hebrewDate}
+                </p>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginTop: '1.5rem' }}>
+                <a
+                  href={generateGoogleCalendarUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary-glass"
+                >
+                  <svg style={{ width: 20, height: 20 }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  הוסף ליומן Google
+                </a>
+                <button
+                  className="btn-secondary-glass"
+                  onClick={() => window.location.reload()}
+                >
+                  קבע תור נוסף
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Navigation Footer */}
-        {step > 1 && step < 4 && (
+        {/* Navigation Footer - Fixed bottom */}
+        {step >= 2 && step < 4 && (
           <div className="nav-footer">
             <button
               className="btn-primary-glass"
               disabled={
-                (step === 2 && !formData.time) ||
+                (step === 2) ||
                 (step === 3 && (!formData.customerName || !formData.customerPhone || bookingLoading))
               }
               onClick={() => {
@@ -626,12 +661,57 @@ const PublicBooking = () => {
                 </>
               ) : step === 3 ? 'אישור וקביעת תור' : 'המשך'}
             </button>
-            <button className="btn-secondary-glass" onClick={() => setStep(step - 1)}>
+            <button className="btn-secondary-glass" onClick={() => setStep(step === 2 ? 1 : step - 1)}>
               חזור
             </button>
           </div>
         )}
       </div>
+
+      {/* Times Modal - iOS style slide-up */}
+      {showTimesModal && step === 2 && (
+        <div className="times-modal-overlay" onClick={() => setShowTimesModal(false)}>
+          <div className="times-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="times-modal-handle" />
+            <div className="times-modal-header">
+              <div className="times-modal-title">
+                {moment(formData.date).format('dddd, D בMMMM YYYY')}
+              </div>
+              {hebrewDate && (
+                <div className="times-modal-subtitle">{hebrewDate}</div>
+              )}
+              <div className="times-modal-subtitle" style={{ marginTop: '0.25rem' }}>
+                {selectedType?.name} • {getTotalDuration()} דק׳
+              </div>
+            </div>
+            <div className="times-modal-body">
+              {loadingTimes ? (
+                <div className="loading-spinner"><div /></div>
+              ) : availableTimes.length > 0 ? (
+                <div className="time-chips-grid">
+                  {availableTimes.map((t) => (
+                    <div
+                      key={t}
+                      className={`time-chip ${formData.time === t ? 'selected' : ''}`}
+                      onClick={() => handleTimeSelect(t)}
+                    >
+                      {t}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-times">
+                  <p>אין תורים פנויים לתאריך זה</p>
+                  <p>נסה לבחור תאריך אחר</p>
+                </div>
+              )}
+            </div>
+            <button className="times-modal-close" onClick={() => setShowTimesModal(false)}>
+              חזור ללוח שנה
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
