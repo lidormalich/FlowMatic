@@ -15,6 +15,7 @@ const staff = require('./routes/api/staff');
 const templates = require('./routes/api/templates');
 const waitlist = require('./routes/api/waitlist');
 const inventory = require('./routes/api/inventory');
+const notifications = require('./routes/api/notifications');
 require('dotenv').config();
 
 require('./config/passport')(passport);
@@ -56,6 +57,10 @@ mongoose
     // Start SMS reminder cron job
     const startSMSReminderJob = require('./jobs/smsReminders');
     startSMSReminderJob();
+
+    // Start in-app appointment reminder job
+    const startAppointmentReminderJob = require('./jobs/appointmentReminders');
+    startAppointmentReminderJob();
   })
   .catch(err => console.log(err));
 
@@ -71,6 +76,7 @@ app.use('/api/staff', staff);
 app.use('/api/templates', templates);
 app.use('/api/waitlist', waitlist);
 app.use('/api/inventory', inventory);
+app.use('/api/notifications', notifications);
 
 app.use(express.static(path.join(__dirname, 'client-new/build')));
 

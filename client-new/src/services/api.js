@@ -86,6 +86,14 @@ export const appointmentsApi = {
   cancelRecurring: async (groupId) => {
     const response = await api.delete(`/appointments/recurring/${groupId}`);
     return response.data;
+  },
+  getMyBookings: async () => {
+    const response = await api.get('/appointments/my-bookings');
+    return response.data;
+  },
+  cancelBooking: async (id) => {
+    const response = await api.post(`/appointments/${id}/cancel`);
+    return response.data;
   }
 };
 
@@ -297,6 +305,57 @@ export const authApi = {
   },
   verifyResetToken: async (token) => {
     const response = await api.get(`/auth/verify-reset-token/${token}`);
+    return response.data;
+  }
+};
+
+export const notificationsApi = {
+  getAll: async () => {
+    const response = await api.get('/notifications');
+    return response.data;
+  },
+  getUnreadCount: async () => {
+    const response = await api.get('/notifications/unread-count');
+    return response.data;
+  },
+  markRead: async (id) => {
+    const response = await api.put(`/notifications/${id}/read`);
+    return response.data;
+  },
+  markAllRead: async () => {
+    const response = await api.put('/notifications/read-all');
+    return response.data;
+  },
+  send: async (data) => {
+    const response = await api.post('/notifications/send', data);
+    return response.data;
+  },
+  broadcast: async (data) => {
+    const response = await api.post('/notifications/broadcast', data);
+    return response.data;
+  },
+  adminBroadcast: async (data) => {
+    const response = await api.post('/notifications/admin-broadcast', data);
+    return response.data;
+  },
+  adminHistory: async () => {
+    const response = await api.get('/notifications/admin-history');
+    return response.data;
+  },
+  adminAllNotifications: async () => {
+    const response = await api.get('/notifications/admin-all');
+    return response.data;
+  },
+  getVapidKey: async () => {
+    const response = await api.get('/notifications/vapid-key');
+    return response.data;
+  },
+  pushSubscribe: async (data) => {
+    const response = await api.post('/notifications/push-subscribe', data);
+    return response.data;
+  },
+  pushUnsubscribe: async (data) => {
+    const response = await api.post('/notifications/push-unsubscribe', data);
     return response.data;
   }
 };

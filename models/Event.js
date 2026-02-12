@@ -95,6 +95,14 @@ const eventSchema = new Schema({
         type: Boolean,
         default: false
     },
+    reminderNotificationSent: {
+        type: Boolean,
+        default: false
+    },
+    reminderDayBeforeSent: {
+        type: Boolean,
+        default: false
+    },
     createdAt: {
         type: Date,
         default: Date.now,

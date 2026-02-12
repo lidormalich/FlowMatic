@@ -9,6 +9,7 @@ import { useTheme } from './context/ThemeContext';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import PrivateRoute from './components/common/PrivateRoute';
+import PushNotificationBanner from './components/common/PushNotificationBanner';
 
 // Pages
 import Login from './components/auth/Login';
@@ -29,6 +30,7 @@ import Waitlist from './components/pages/Waitlist';
 import Inventory from './components/pages/Inventory';
 import Templates from './components/pages/Templates';
 import MyAppointments from './components/pages/MyAppointments';
+import NotificationCenter from './components/pages/NotificationCenter';
 import NotFound from './components/pages/NotFound';
 
 import './App.css';
@@ -152,6 +154,14 @@ function AppContent() {
                 </PrivateRoute>
               }
             />
+            <Route
+              path="/notification-center"
+              element={
+                <PrivateRoute>
+                  <NotificationCenter />
+                </PrivateRoute>
+              }
+            />
 
             <Route
               path="/"
@@ -168,6 +178,7 @@ function AppContent() {
           </Routes>
         </main>
       </div>
+      {isAuthenticated && !isPublicRoute && <PushNotificationBanner />}
       <ToastContainer
         position="top-left"
         autoClose={3000}
