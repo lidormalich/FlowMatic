@@ -4,14 +4,17 @@ import {
     PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
 import api from '../../services/api';
+import HeatmapChart from '../common/HeatmapChart';
 
 const Reports = () => {
     const [data, setData] = useState(null);
+    const [heatmapData, setHeatmapData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [range, setRange] = useState('year'); // 'month', 'year'
 
     useEffect(() => {
         fetchReports();
+        fetchHeatmap();
     }, [range]);
 
     const fetchReports = async () => {
@@ -23,6 +26,15 @@ const Reports = () => {
             console.error('Error fetching reports:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchHeatmap = async () => {
+        try {
+            const response = await api.get('/reports/heatmap?months=3');
+            setHeatmapData(response.data);
+        } catch (error) {
+            console.error('Error fetching heatmap:', error);
         }
     };
 
@@ -111,6 +123,17 @@ const Reports = () => {
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
+                </section>
+
+                {/* Heatmap */}
+                <section className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm">
+                    <h2 className="text-xl font-bold text-slate-900 mb-1">שעות חמות</h2>
+                    <p className="text-slate-500 text-sm mb-4">התפלגות תורים לפי יום ושעה (3 חודשים אחרונים)</p>
+                    {heatmapData.length > 0 ? (
+                        <HeatmapChart data={heatmapData} />
+                    ) : (
+                        <p className="text-slate-400 text-center py-8">אין מספיק נתונים להצגת מפת חום</p>
+                    )}
                 </section>
             </div>
         </div>

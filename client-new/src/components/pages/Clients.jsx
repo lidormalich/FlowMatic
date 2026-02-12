@@ -424,6 +424,47 @@ const Clients = () => {
                                 </div>
                             </div>
 
+                            {/* Extra Info Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                {/* Top Services */}
+                                {selectedClientHistory.topServices?.length > 0 && (
+                                    <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                                        <h4 className="text-sm font-semibold text-slate-600 mb-3">שירותים מובילים</h4>
+                                        <div className="space-y-2">
+                                            {selectedClientHistory.topServices.map((svc, i) => (
+                                                <div key={svc.name} className="flex items-center justify-between">
+                                                    <span className="text-sm text-slate-800">{svc.name}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-24 bg-slate-100 rounded-full h-2">
+                                                            <div
+                                                                className="bg-blue-500 h-2 rounded-full"
+                                                                style={{ width: `${(svc.count / selectedClientHistory.topServices[0].count) * 100}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs font-semibold text-slate-500 w-6 text-left">{svc.count}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Avg Interval & Lifetime Value */}
+                                <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col justify-center gap-4">
+                                    <div className="text-center">
+                                        <div className="text-sm text-slate-500 mb-1">ממוצע ימים בין ביקורים</div>
+                                        <div className="text-3xl font-bold text-slate-900">
+                                            {selectedClientHistory.averageInterval ? `${selectedClientHistory.averageInterval} ימים` : '-'}
+                                        </div>
+                                    </div>
+                                    <div className="text-center border-t border-slate-100 pt-4">
+                                        <div className="text-sm text-slate-500 mb-1">ערך חיים כולל</div>
+                                        <div className="text-3xl font-bold text-green-600">
+                                            ₪{selectedClientHistory.stats?.totalSpend || 0}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Appointments Table */}
                             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                                 <table className="w-full">

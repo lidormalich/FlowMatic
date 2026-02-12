@@ -57,7 +57,8 @@ const UserSchema = new Schema({
             startMinute: { type: Number, default: 0 },
             endHour: { type: Number, default: 13 },
             endMinute: { type: Number, default: 0 }
-        }
+        },
+        minGapMinutes: { type: Number, default: 0 }
     },
     phoneNumber: {
         type: String,

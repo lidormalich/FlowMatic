@@ -32,6 +32,15 @@ const AppointmentTypeSchema = new Schema({
         type: String,
         default: '#667eea'
     },
+    images: {
+        type: [String],
+        default: [],
+        validate: [arr => arr.length <= 3, 'ניתן להעלות עד 3 תמונות']
+    },
+    relatedServices: [{
+        type: Schema.Types.ObjectId,
+        ref: 'appointmentTypes'
+    }],
     isActive: {
         type: Boolean,
         default: true

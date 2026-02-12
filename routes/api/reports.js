@@ -174,4 +174,50 @@ router.get('/export/clients', passport.authenticate('jwt', { session: false }), 
     }
 });
 
+// GET /api/reports/heatmap - Hot hours heatmap data
+router.get('/heatmap', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const businessOwnerId = req.user.id;
+        const { months = 3 } = req.query;
+        const startDate = moment().subtract(parseInt(months), 'months').startOf('day');
+
+        const data = await Event.aggregate([
+            {
+                $match: {
+                    businessOwnerId: new mongoose.Types.ObjectId(businessOwnerId),
+                    status: { $in: ['completed', 'confirmed', 'pending'] },
+                    date: { $gte: startDate.toDate() }
+                }
+            },
+            {
+                $project: {
+                    dayOfWeek: { $dayOfWeek: '$date' }, // 1=Sun, 7=Sat
+                    hour: {
+                        $toInt: { $arrayElemAt: [{ $split: ['$startTime', ':'] }, 0] }
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: { day: '$dayOfWeek', hour: '$hour' },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { '_id.day': 1, '_id.hour': 1 } }
+        ]);
+
+        // Transform to matrix format: { day, hour, count }
+        const heatmap = data.map(d => ({
+            day: d._id.day, // 1=Sun ... 7=Sat
+            hour: d._id.hour,
+            count: d.count
+        }));
+
+        res.json(heatmap);
+    } catch (err) {
+        console.error('Heatmap report error:', err);
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
+
 module.exports = router;

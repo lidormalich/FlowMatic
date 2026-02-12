@@ -11,7 +11,9 @@
       "Bash(Get-Process node -ErrorAction SilentlyContinue)",
       "Bash(Select-Object Id, ProcessName, CPU)",
       "Bash(tasklist)",
-      "Bash(findstr node)"
+      "Bash(findstr node)",
+      "Bash(del \"c:\\\\Users\\\\lidor-PC\\\\Documents\\\\Git\\\\FlowMatic\\\\client-new\\\\src\\\\service-worker.js\")",
+      "Bash(npm run build:*)"
     ]
   }
 }

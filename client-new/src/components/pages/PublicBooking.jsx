@@ -25,6 +25,8 @@ const PublicBooking = () => {
   const [availableTimes, setAvailableTimes] = useState([]);
   const [loadingTimes, setLoadingTimes] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [showUpsell, setShowUpsell] = useState(false);
+  const [additionalServices, setAdditionalServices] = useState([]);
 
   const [currentMonth, setCurrentMonth] = useState(moment());
   const [formData, setFormData] = useState({
@@ -53,7 +55,7 @@ const PublicBooking = () => {
     if (formData.date && businessOwner && selectedType) {
       fetchAvailableTimes();
     }
-  }, [formData.date, selectedType, businessOwner]);
+  }, [formData.date, selectedType, businessOwner, additionalServices]);
 
   const fetchBusinessOwner = async () => {
     try {
@@ -81,7 +83,7 @@ const PublicBooking = () => {
       const res = await axios.get(`/api/appointments/available/${username}`, {
         params: {
           date: formData.date,
-          duration: selectedType?.duration || 60,
+          duration: getTotalDuration() || selectedType?.duration || 60,
         },
       });
       setAvailableTimes(res.data.times || []);
@@ -94,7 +96,43 @@ const PublicBooking = () => {
 
   const handleServiceSelect = (type) => {
     setSelectedType(type);
+    setAdditionalServices([]);
+    if (type.relatedServices?.length > 0) {
+      setShowUpsell(true);
+    } else {
+      setStep(2);
+    }
+  };
+
+  const toggleAdditionalService = (service) => {
+    setAdditionalServices(prev =>
+      prev.find(s => s._id === service._id)
+        ? prev.filter(s => s._id !== service._id)
+        : [...prev, service]
+    );
+  };
+
+  const confirmUpsell = () => {
+    setShowUpsell(false);
     setStep(2);
+  };
+
+  const skipUpsell = () => {
+    setAdditionalServices([]);
+    setShowUpsell(false);
+    setStep(2);
+  };
+
+  const getTotalDuration = () => {
+    const base = selectedType?.duration || 0;
+    const extra = additionalServices.reduce((sum, s) => sum + (s.duration || 0), 0);
+    return base + extra;
+  };
+
+  const getTotalPrice = () => {
+    const base = selectedType?.price || 0;
+    const extra = additionalServices.reduce((sum, s) => sum + (s.price || 0), 0);
+    return base + extra;
   };
 
   const handleTimeSelect = (time) => {
@@ -113,6 +151,10 @@ const PublicBooking = () => {
 
     setBookingLoading(true);
     try {
+      const totalDuration = getTotalDuration();
+      const totalPrice = getTotalPrice();
+      const serviceNames = [selectedType.name, ...additionalServices.map(s => s.name)].join(' + ');
+
       const appointmentData = {
         businessOwnerId: businessOwner._id,
         appointmentTypeId: selectedType._id,
@@ -122,9 +164,10 @@ const PublicBooking = () => {
         customerId: user?.id || null,
         date: formData.date,
         startTime: formData.time,
-        duration: selectedType.duration,
-        service: selectedType.name,
-        price: selectedType.price,
+        duration: totalDuration,
+        service: serviceNames,
+        price: totalPrice,
+        additionalServices: additionalServices.map(s => ({ _id: s._id, name: s.name, duration: s.duration, price: s.price })),
       };
 
       await axios.post(`/api/appointments/public/${username}`, appointmentData);
@@ -242,7 +285,15 @@ const PublicBooking = () => {
                   className={`service-box ${selectedType?._id === type._id ? 'selected' : ''}`}
                   onClick={() => handleServiceSelect(type)}
                 >
-                  <div className="service-box-icon">{getIcon(type.name)}</div>
+                  {type.images?.length > 0 ? (
+                    <img
+                      src={type.images[0]}
+                      alt={type.name}
+                      style={{ width: '3.5rem', height: '3.5rem', objectFit: 'cover', borderRadius: '0.75rem', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div className="service-box-icon">{getIcon(type.name)}</div>
+                  )}
                   <div className="service-box-info">
                     <span className="service-box-name">{type.name}</span>
                     {type.description && (
@@ -255,6 +306,118 @@ const PublicBooking = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upsell Popup */}
+        {showUpsell && selectedType?.relatedServices?.length > 0 && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{ backdropFilter: 'blur(4px)' }}>
+            <div style={{
+              background: 'rgba(255,255,255,0.95)',
+              backdropFilter: 'blur(20px)',
+              borderRadius: '1.5rem',
+              maxWidth: '28rem',
+              width: '100%',
+              padding: '2rem',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.15)',
+              direction: 'rtl'
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.5rem' }}>
+                  שירותים משלימים
+                </h3>
+                <p style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                  רוצה להוסיף עוד שירות לתור?
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                {selectedType.relatedServices.map(rs => {
+                  const isSelected = additionalServices.find(s => s._id === rs._id);
+                  return (
+                    <div
+                      key={rs._id}
+                      onClick={() => toggleAdditionalService(rs)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.875rem 1rem',
+                        borderRadius: '1rem',
+                        border: isSelected ? '2px solid var(--primary-color, #6366f1)' : '2px solid #e2e8f0',
+                        background: isSelected ? 'rgba(99,102,241,0.05)' : 'white',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <div style={{
+                        width: '1.5rem',
+                        height: '1.5rem',
+                        borderRadius: '0.5rem',
+                        border: isSelected ? 'none' : '2px solid #cbd5e1',
+                        background: isSelected ? 'var(--primary-color, #6366f1)' : 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        {isSelected && <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 700 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.95rem' }}>{rs.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.125rem' }}>
+                          {rs.duration} דק׳ {rs.price > 0 && `• ₪${rs.price}`}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {additionalServices.length > 0 && (
+                <div style={{
+                  background: 'rgba(99,102,241,0.05)',
+                  borderRadius: '0.75rem',
+                  padding: '0.75rem 1rem',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem',
+                  color: '#4f46e5',
+                  fontWeight: 600,
+                  textAlign: 'center'
+                }}>
+                  סה״כ: {getTotalDuration()} דק׳ • ₪{getTotalPrice()}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button
+                  onClick={confirmUpsell}
+                  className="btn-primary-glass"
+                  style={{ width: '100%' }}
+                >
+                  {additionalServices.length > 0 ? `המשך עם ${additionalServices.length + 1} שירותים` : 'המשך'}
+                </button>
+                {additionalServices.length > 0 && (
+                  <button
+                    onClick={skipUpsell}
+                    className="btn-secondary-glass"
+                    style={{ width: '100%' }}
+                  >
+                    המשך בלי תוספות
+                  </button>
+                )}
+                {additionalServices.length === 0 && (
+                  <button
+                    onClick={skipUpsell}
+                    className="btn-secondary-glass"
+                    style={{ width: '100%' }}
+                  >
+                    לא תודה, המשך
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -385,10 +548,15 @@ const PublicBooking = () => {
             {/* Booking Summary */}
             <div className="summary-card">
               <p className="summary-card-title">{selectedType?.name}</p>
+              {additionalServices.length > 0 && (
+                <div style={{ fontSize: '0.85rem', color: '#6366f1', marginBottom: '0.25rem' }}>
+                  + {additionalServices.map(s => s.name).join(', ')}
+                </div>
+              )}
               <div className="summary-card-detail">
                 <p>{moment(formData.date).format('dddd, D בMMMM YYYY')} • {formData.time}</p>
                 {hebrewDate && <p>{hebrewDate}</p>}
-                {selectedType?.duration && <p>{selectedType.duration} דקות • ₪{selectedType.price}</p>}
+                <p>{getTotalDuration()} דקות • ₪{getTotalPrice()}</p>
               </div>
             </div>
           </div>

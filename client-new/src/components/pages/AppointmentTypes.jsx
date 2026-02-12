@@ -22,6 +22,8 @@ const AppointmentTypes = () => {
     duration: 30,
     price: 0,
     color: '#667eea',
+    relatedServices: [],
+    images: [],
   });
 
   const handleInputChange = (e) => {
@@ -29,6 +31,46 @@ const AppointmentTypes = () => {
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const toggleRelatedService = (serviceId) => {
+    setFormData(prev => ({
+      ...prev,
+      relatedServices: prev.relatedServices.includes(serviceId)
+        ? prev.relatedServices.filter(id => id !== serviceId)
+        : [...prev.relatedServices, serviceId]
+    }));
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const remaining = 3 - formData.images.length;
+    if (remaining <= 0) {
+      toast.error('ניתן להעלות עד 3 תמונות');
+      return;
+    }
+    files.slice(0, remaining).forEach(file => {
+      if (file.size > 500 * 1024) {
+        toast.error(`הקובץ ${file.name} גדול מדי (מקסימום 500KB)`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          images: [...prev.images, reader.result]
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const removeImage = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
   };
 
   const openCreateModal = () => {
@@ -41,6 +83,8 @@ const AppointmentTypes = () => {
       duration: 30,
       price: 0,
       color: '#667eea',
+      relatedServices: [],
+      images: [],
     });
     setShowModal(true);
   };
@@ -55,6 +99,8 @@ const AppointmentTypes = () => {
       duration: type.duration,
       price: type.price || 0,
       color: type.color || '#667eea',
+      relatedServices: type.relatedServices?.map(s => typeof s === 'object' ? s._id : s) || [],
+      images: type.images || [],
     });
     setShowModal(true);
   };
@@ -202,6 +248,18 @@ const AppointmentTypes = () => {
                   )}
                 </div>
 
+                {/* Related Services */}
+                {type.relatedServices?.length > 0 && (
+                  <div className="mb-4">
+                    <span className="text-xs text-gray-500">שירותים משלימים: </span>
+                    {type.relatedServices.map((rs, idx) => (
+                      <span key={typeof rs === 'object' ? rs._id : rs} className="inline-block bg-indigo-50 text-indigo-600 text-xs px-2 py-0.5 rounded mr-1">
+                        {typeof rs === 'object' ? rs.name : appointmentTypes.find(t => t._id === rs)?.name || ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-2 pt-4 border-t border-gray-200">
                   <button
@@ -323,6 +381,72 @@ const AppointmentTypes = () => {
                   />
                 </div>
               </div>
+
+              {/* Images */}
+              <div className="mb-6">
+                <label className="block text-gray-700 font-semibold mb-2 text-right">
+                  תמונות שירות (עד 3)
+                </label>
+                <div className="flex gap-3 flex-wrap mb-3">
+                  {formData.images.map((img, idx) => (
+                    <div key={idx} className="relative group">
+                      <img
+                        src={img}
+                        alt={`תמונה ${idx + 1}`}
+                        className="w-24 h-24 object-cover rounded-xl border-2 border-gray-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(idx)}
+                        className="absolute -top-2 -left-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  {formData.images.length < 3 && (
+                    <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-primary hover:bg-gray-50 transition-colors">
+                      <span className="text-2xl text-gray-400">📷</span>
+                      <span className="text-xs text-gray-400 mt-1">הוסף</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Related Services (Upsell) */}
+              {appointmentTypes.length > 0 && (
+                <div className="mb-6">
+                  <label className="block text-gray-700 font-semibold mb-2 text-right">
+                    שירותים משלימים (Upsell)
+                  </label>
+                  <p className="text-sm text-gray-500 mb-3 text-right">בחר שירותים שיוצעו ללקוח בעת ההזמנה</p>
+                  <div className="flex flex-wrap gap-2">
+                    {appointmentTypes
+                      .filter(t => t._id !== currentType?._id)
+                      .map(t => (
+                        <button
+                          key={t._id}
+                          type="button"
+                          onClick={() => toggleRelatedService(t._id)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border ${
+                            formData.relatedServices.includes(t._id)
+                              ? 'bg-indigo-100 border-indigo-400 text-indigo-700'
+                              : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          {formData.relatedServices.includes(t._id) ? '✓ ' : ''}{t.name}
+                          {t.price > 0 && <span className="mr-1 text-xs opacity-70"> (₪{t.price})</span>}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               {/* Color */}
               <div className="mb-6">

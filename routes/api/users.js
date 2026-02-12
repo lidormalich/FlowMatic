@@ -117,6 +117,7 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
                 if (req.body.businessHours.breakTime.endHour !== undefined) user.businessHours.breakTime.endHour = req.body.businessHours.breakTime.endHour;
                 if (req.body.businessHours.breakTime.endMinute !== undefined) user.businessHours.breakTime.endMinute = req.body.businessHours.breakTime.endMinute;
             }
+            if (req.body.businessHours.minGapMinutes !== undefined) user.businessHours.minGapMinutes = req.body.businessHours.minGapMinutes;
         }
 
         // SMS Notifications settings

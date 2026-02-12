@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Calendar, momentLocalizer } from 'react-big-calendar';
+import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import moment from 'moment';
 import 'moment/locale/he';
 import { formatHebrewDate } from '../../utils/hebrewDate';
@@ -8,7 +10,7 @@ import { toast } from 'react-toastify';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../hooks/useAppointments';
-import { appointmentTypesApi, clientsApi, reportsApi } from '../../services/api';
+import { appointmentTypesApi, appointmentsApi, clientsApi, reportsApi } from '../../services/api';
 import SkeletonLoader from '../common/SkeletonLoader';
 
 const TAG_ICONS = {
@@ -22,8 +24,10 @@ const TAG_ICONS = {
 const CalendarEvent = ({ event }) => {
   const tags = event.resource?.clientTags || [];
   const tagIcons = tags.map(t => TAG_ICONS[t] || '🏷️').join('');
+  const isRecurring = event.resource?.isRecurring;
   return (
     <span>
+      {isRecurring && <span style={{ marginLeft: 4 }}>🔄</span>}
       {tagIcons && <span style={{ marginLeft: 4 }}>{tagIcons}</span>}
       {event.title}
     </span>
@@ -32,6 +36,7 @@ const CalendarEvent = ({ event }) => {
 
 moment.locale('he');
 const localizer = momentLocalizer(moment);
+const DnDCalendar = withDragAndDrop(Calendar);
 
 const messages = {
   allDay: 'כל היום', previous: 'קודם', next: 'הבא', today: 'היום',
@@ -74,6 +79,9 @@ const Events = () => {
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' });
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurFrequency, setRecurFrequency] = useState('weekly');
+  const [recurEndDate, setRecurEndDate] = useState('');
   const [clientNotes, setClientNotes] = useState('');
   const [detailClientNotes, setDetailClientNotes] = useState('');
   const [detailClientId, setDetailClientId] = useState(null);
@@ -140,11 +148,35 @@ const Events = () => {
       toast.error('יש למלא את כל השדות החובה'); return;
     }
     const type = appointmentTypes.find(t => t._id === formData.appointmentTypeId);
-    const [h, m] = formData.startTime.split(':');
-    const start = new Date(formData.date); start.setHours(+h, +m);
     const duration = +formData.duration || type.duration;
-    const end = new Date(start.getTime() + duration * 60000);
-    createAppointment({ ...formData, endTime: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`, duration, service: type.name, price: formData.price !== '' ? +formData.price : type.price, status: 'confirmed' });
+    const price = formData.price !== '' ? +formData.price : type.price;
+
+    if (isRecurring) {
+      if (!recurEndDate) { toast.error('נא לבחור תאריך סיום לתורים חוזרים'); return; }
+      try {
+        const result = await appointmentsApi.createRecurring({
+          customerName: formData.customerName,
+          customerPhone: formData.customerPhone,
+          customerEmail: formData.customerEmail || '',
+          date: formData.date,
+          startTime: formData.startTime,
+          duration,
+          service: type.name,
+          price,
+          frequency: recurFrequency,
+          endDate: recurEndDate,
+          description: formData.description || ''
+        });
+        toast.success(`נוצרו ${result.count} תורים חוזרים!`);
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'שגיאה ביצירת תורים חוזרים');
+      }
+    } else {
+      const [h, m] = formData.startTime.split(':');
+      const start = new Date(formData.date); start.setHours(+h, +m);
+      const end = new Date(start.getTime() + duration * 60000);
+      createAppointment({ ...formData, endTime: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`, duration, service: type.name, price, status: 'confirmed' });
+    }
     setShowAddModal(false); resetForm();
   };
 
@@ -185,7 +217,23 @@ const Events = () => {
     } catch (e) { toast.error('שגיאה בשמירת הערה'); }
   };
   const handleUpdateStatus = (id, status) => { updateAppointment({ id, data: { status } }); setShowDetailModal(false); };
-  const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' }); setClientNotes(''); };
+  const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' }); setClientNotes(''); setIsRecurring(false); setRecurFrequency('weekly'); setRecurEndDate(''); };
+
+  const handleEventDrop = useCallback(({ event, start }) => {
+    const newDate = moment(start).format('YYYY-MM-DD');
+    const newTime = moment(start).format('HH:mm');
+    if (!window.confirm(`להזיז את התור של ${event.resource.customerName} ל-${newDate} בשעה ${newTime}?`)) return;
+    updateAppointment({ id: event.resource._id, data: { date: newDate, startTime: newTime, endTime: moment(start).add(event.resource.duration || 60, 'minutes').format('HH:mm') } });
+  }, [updateAppointment]);
+
+  const handleEventResize = useCallback(({ event, start, end }) => {
+    const newDuration = Math.round((end - start) / 60000);
+    const newTime = moment(start).format('HH:mm');
+    if (!window.confirm(`לשנות את משך התור של ${event.resource.customerName} ל-${newDuration} דקות?`)) return;
+    updateAppointment({ id: event.resource._id, data: { startTime: newTime, endTime: moment(end).format('HH:mm'), duration: newDuration } });
+  }, [updateAppointment]);
+
+  const draggableAccessor = useCallback((event) => event.resource?.status !== 'cancelled' && event.resource?.status !== 'completed', []);
 
   const calendarEvents = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType))
     .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); const phoneClean = apt.customerPhone?.replace(/\D/g, ''); const clientTags = clientTagsMap[phoneClean] || []; return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resource: { ...apt, clientTags }, style: { backgroundColor: type?.color || '#3b82f6' } }; });
@@ -230,7 +278,7 @@ const Events = () => {
       {view === 'calendar' ? (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm" style={{ minHeight: '700px' }}>
           {showHebrewDate && <div className="mb-4 p-3 bg-blue-50 rounded-2xl text-center"><span className="text-lg font-semibold text-blue-600">תאריך עברי: {formatHebrewDate(calendarDate)}</span></div>}
-          <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} />
+          <DnDCalendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} onEventDrop={handleEventDrop} onEventResize={handleEventResize} draggableAccessor={draggableAccessor} resizable />
         </div>
       ) : (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-sm overflow-hidden">
@@ -294,6 +342,21 @@ const Events = () => {
                 {selectedAppointment.status === 'confirmed' && <div className="space-y-3 mb-4"><div className="flex gap-3"><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-full">הושלם</button><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-500 hover:bg-slate-600 text-white font-semibold py-3 rounded-full">לא הגיע</button></div><button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-3 rounded-full">בטל תור</button></div>}
                 {['completed', 'no_show', 'cancelled'].includes(selectedAppointment.status) && <div className="mb-4 p-4 bg-slate-50 rounded-2xl text-right text-sm text-slate-600">{selectedAppointment.status === 'completed' ? 'תור זה הושלם בהצלחה' : selectedAppointment.status === 'no_show' ? 'הלקוח לא הגיע' : 'תור זה בוטל'}</div>}
               </div>
+              {selectedAppointment.isRecurring && selectedAppointment.recurrenceGroupId && (
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('לבטל את כל התורים החוזרים העתידיים בסדרה זו?')) return;
+                    try {
+                      const result = await appointmentsApi.cancelRecurring(selectedAppointment.recurrenceGroupId);
+                      toast.success(`בוטלו ${result.cancelled} תורים עתידיים`);
+                      setShowDetailModal(false);
+                    } catch (err) { toast.error('שגיאה בביטול תורים חוזרים'); }
+                  }}
+                  className="w-full mb-3 bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold py-3 rounded-full transition-colors"
+                >
+                  🔄 בטל את כל התורים החוזרים העתידיים
+                </button>
+              )}
               <button onClick={() => setShowDetailModal(false)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-colors">סגור</button>
             </div>
           </div>
@@ -314,7 +377,30 @@ const Events = () => {
                 <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
                 <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
               </div>
-              <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100"><button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-full shadow-lg shadow-blue-500/30 transition-all">הוסף תור</button><button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-all">ביטול</button></div>
+              {/* Recurring Toggle */}
+              <div className="mt-5 p-4 bg-indigo-50 rounded-2xl">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="w-5 h-5 rounded text-indigo-600" />
+                  <span className="text-sm font-semibold text-indigo-700">🔄 תור חוזר</span>
+                </label>
+                {isRecurring && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-indigo-600 text-right">תדירות</label>
+                      <select value={recurFrequency} onChange={(e) => setRecurFrequency(e.target.value)} className="w-full h-10 bg-white border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-indigo-500 outline-none appearance-none">
+                        <option value="weekly">כל שבוע</option>
+                        <option value="biweekly">כל שבועיים</option>
+                        <option value="monthly">כל חודש</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-indigo-600 text-right">עד תאריך</label>
+                      <input type="date" value={recurEndDate} onChange={(e) => setRecurEndDate(e.target.value)} min={formData.date || new Date().toISOString().split('T')[0]} className="w-full h-10 bg-white border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100"><button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-full shadow-lg shadow-blue-500/30 transition-all">{isRecurring ? '🔄 צור תורים חוזרים' : 'הוסף תור'}</button><button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-all">ביטול</button></div>
             </form>
           </div>
         </div>

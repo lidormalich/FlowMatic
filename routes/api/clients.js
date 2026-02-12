@@ -164,10 +164,37 @@ router.get('/:id', passport.authenticate('jwt', { session: false }), async (req,
             return acc;
         }, { total: 0, completed: 0, cancelled: 0, noShow: 0, totalSpend: 0 });
 
+        // Top services
+        const serviceCount = {};
+        appointments.filter(a => a.status === 'completed').forEach(apt => {
+            const name = apt.service || 'לא ידוע';
+            serviceCount[name] = (serviceCount[name] || 0) + 1;
+        });
+        const topServices = Object.entries(serviceCount)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([name, count]) => ({ name, count }));
+
+        // Average interval between visits (days)
+        const completedDates = appointments
+            .filter(a => a.status === 'completed' && a.date)
+            .map(a => new Date(a.date).getTime())
+            .sort((a, b) => a - b);
+        let averageInterval = 0;
+        if (completedDates.length >= 2) {
+            let totalDays = 0;
+            for (let i = 1; i < completedDates.length; i++) {
+                totalDays += (completedDates[i] - completedDates[i - 1]) / (1000 * 60 * 60 * 24);
+            }
+            averageInterval = Math.round(totalDays / (completedDates.length - 1));
+        }
+
         res.json({
             ...client.toJSON(),
             appointments,
-            stats
+            stats,
+            topServices,
+            averageInterval
         });
     } catch (err) {
         console.error('Get client error:', err);
