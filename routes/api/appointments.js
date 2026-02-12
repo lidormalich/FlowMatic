@@ -26,6 +26,7 @@ const appointmentValidation = Joi.object({
   price: Joi.number().optional(),
   customerId: Joi.string().optional().allow(null, ''),
   businessOwnerId: Joi.string().optional().allow(null, ''),
+  staffId: Joi.string().optional().allow(null, ''),
   additionalServices: Joi.array().items(Joi.object({
     _id: Joi.string().required(),
     name: Joi.string().required(),
@@ -35,7 +36,7 @@ const appointmentValidation = Joi.object({
 });
 
 // Helper: Calculate Available Slots with Buffer
-async function calculateAvailableSlots(businessOwnerId, date, duration) {
+async function calculateAvailableSlots(businessOwnerId, date, duration, staffId) {
   try {
     const owner = await User.findById(businessOwnerId);
     if (!owner) {
@@ -74,14 +75,17 @@ async function calculateAvailableSlots(businessOwnerId, date, duration) {
 
     // Get existing appointments for the SPECIFIC day
     // We use startOf/endOf day in UTC to avoid missing any appointments
-    const appointments = await Event.find({
+    const aptQuery = {
       businessOwnerId: owner._id,
       date: {
         $gte: requestedDate.clone().startOf('day').toDate(),
         $lte: requestedDate.clone().endOf('day').toDate()
       },
       status: { $in: ['pending', 'confirmed', 'blocked'] }
-    }).sort('startTime');
+    };
+    // If staffId provided, only check that staff member's appointments
+    if (staffId) aptQuery.staffId = staffId;
+    const appointments = await Event.find(aptQuery).sort('startTime');
     
     console.log(`[AVAILABILITY] Found ${appointments.length} existing events.`);
 
@@ -287,8 +291,9 @@ router.get('/', passport.authenticate('jwt', { session: false }), async (req, re
 // GET /api/appointments/available/:username - Public endpoint for availability
 router.get('/available/:username', async (req, res) => {
   try {
-    const { date, duration = 60 } = req.query;
-    console.log(`[DEBUG] Availability Request: username="${req.params.username}", date="${date}"`);
+    const { date, duration = 60, staffId } = req.query;
+    console.log(`[DEBUG] Availability Request: username="${req.params.username}", date="${date}", staffId="${staffId || 'none'}"`);
+
     
     // Find business owner (case-insensitive) - Allow both business_owner    // Find business owner (case-insensitive)
     const owner = await User.findOne({
@@ -311,7 +316,7 @@ router.get('/available/:username', async (req, res) => {
 
     console.log(`[AVAILABILITY] SUCCESS: Found user ${owner.username} (${owner._id})`);
 
-    const slots = await calculateAvailableSlots(owner._id, date, parseInt(duration));
+    const slots = await calculateAvailableSlots(owner._id, date, parseInt(duration), staffId || null);
 
     res.json({ times: slots });
   } catch (err) {
@@ -343,7 +348,7 @@ router.post('/public/:username', async (req, res) => {
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId, additionalServices } = value;
+    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, customerId, staffId, additionalServices } = value;
 
     // Find business owner (case-insensitive)
     const owner = await User.findOne({
@@ -399,7 +404,7 @@ router.post('/public/:username', async (req, res) => {
     const endDateTime = startDateTime.clone().add(totalDuration, 'minutes');
 
     // Check if slot is still available
-    const slots = await calculateAvailableSlots(owner._id, date, totalDuration);
+    const slots = await calculateAvailableSlots(owner._id, date, totalDuration, staffId || null);
     if (!slots.includes(startTime)) {
       return res.status(400).json({ message: 'השעה שנבחרה כבר תפוסה' });
     }
@@ -409,6 +414,7 @@ router.post('/public/:username', async (req, res) => {
       businessOwnerId: owner._id,
       appointmentTypeId,
       customerId: customerId || null,
+      staffId: staffId || null,
       customerName,
       customerPhone,
       customerEmail: customerEmail || '',
@@ -453,12 +459,12 @@ router.post('/', passport.authenticate('jwt', { session: false }), async (req, r
       return res.status(400).json({ message: error.details[0].message });
     }
 
-    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, status, duration, service, price } = value;
+    const { appointmentTypeId, customerName, customerPhone, customerEmail, date, startTime, description, status, duration, service, price, staffId } = value;
 
     // Calculate end time
     const [hours, minutes] = startTime.split(':');
     const startDateTime = moment(date).hour(parseInt(hours)).minute(parseInt(minutes));
-    
+
     // Use provided duration or default to 60
     const finalDuration = duration || 60;
     const endDateTime = startDateTime.clone().add(finalDuration, 'minutes');
@@ -466,6 +472,7 @@ router.post('/', passport.authenticate('jwt', { session: false }), async (req, r
     const newAppointment = new Event({
       businessOwnerId: req.user.id,
       appointmentTypeId: appointmentTypeId || null,
+      staffId: staffId || null,
       customerName,
       customerPhone: customerPhone || '0000000000',
       customerEmail: customerEmail || '',

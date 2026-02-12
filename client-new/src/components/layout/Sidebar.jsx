@@ -16,6 +16,7 @@ const Sidebar = () => {
     { path: '/reports', label: 'דוחות', icon: 'chart', roles: ['admin', 'business_owner'] },
     { path: '/staff', label: 'צוות', icon: 'team', roles: ['admin', 'business_owner'] },
     { path: '/waitlist', label: 'רשימת המתנה', icon: 'clock', roles: ['admin', 'business_owner'] },
+    { path: '/inventory', label: 'מלאי', icon: 'box', roles: ['admin', 'business_owner'] },
     { path: '/templates', label: 'תבניות הודעות', icon: 'message', roles: ['admin', 'business_owner'] },
     { path: '/my-appointments', label: 'התורים שלי', icon: 'user' },
     { path: '/settings', label: 'הגדרות עסק', icon: 'gear', roles: ['admin', 'business_owner'] },
@@ -71,6 +72,11 @@ const Sidebar = () => {
     gear: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+      </svg>
+    ),
+    box: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
       </svg>
     ),
   };

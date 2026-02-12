@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../hooks/useAppointments';
-import { appointmentTypesApi, appointmentsApi, clientsApi, reportsApi } from '../../services/api';
+import { appointmentTypesApi, appointmentsApi, clientsApi, staffApi, reportsApi } from '../../services/api';
 import SkeletonLoader from '../common/SkeletonLoader';
 
 const TAG_ICONS = {
@@ -57,6 +57,10 @@ const Events = () => {
     queryKey: ['clients'],
     queryFn: clientsApi.getAll
   });
+  const { data: staffData } = useQuery({
+    queryKey: ['staff'],
+    queryFn: staffApi.getAll
+  });
 
   const clientTagsMap = useMemo(() => {
     const map = {};
@@ -77,8 +81,10 @@ const Events = () => {
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [filterStaff, setFilterStaff] = useState('all');
+  const [showResourceView, setShowResourceView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [formData, setFormData] = useState({ customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' });
+  const [formData, setFormData] = useState({ customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '', staffId: '' });
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurFrequency, setRecurFrequency] = useState('weekly');
   const [recurEndDate, setRecurEndDate] = useState('');
@@ -89,6 +95,7 @@ const Events = () => {
   const [noteInput, setNoteInput] = useState('');
 
   const appointmentTypes = appointmentTypesData || [];
+  const staffList = staffData || [];
   const loading = appointmentsLoading || typesLoading;
 
   const handlePhoneBlur = async () => {
@@ -175,7 +182,7 @@ const Events = () => {
       const [h, m] = formData.startTime.split(':');
       const start = new Date(formData.date); start.setHours(+h, +m);
       const end = new Date(start.getTime() + duration * 60000);
-      createAppointment({ ...formData, endTime: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`, duration, service: type.name, price, status: 'confirmed' });
+      createAppointment({ ...formData, staffId: formData.staffId || null, endTime: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`, duration, service: type.name, price, status: 'confirmed' });
     }
     setShowAddModal(false); resetForm();
   };
@@ -217,7 +224,7 @@ const Events = () => {
     } catch (e) { toast.error('שגיאה בשמירת הערה'); }
   };
   const handleUpdateStatus = (id, status) => { updateAppointment({ id, data: { status } }); setShowDetailModal(false); };
-  const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '' }); setClientNotes(''); setIsRecurring(false); setRecurFrequency('weekly'); setRecurEndDate(''); };
+  const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '', staffId: '' }); setClientNotes(''); setIsRecurring(false); setRecurFrequency('weekly'); setRecurEndDate(''); };
 
   const handleEventDrop = useCallback(({ event, start }) => {
     const newDate = moment(start).format('YYYY-MM-DD');
@@ -235,10 +242,10 @@ const Events = () => {
 
   const draggableAccessor = useCallback((event) => event.resource?.status !== 'cancelled' && event.resource?.status !== 'completed', []);
 
-  const calendarEvents = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType))
-    .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); const phoneClean = apt.customerPhone?.replace(/\D/g, ''); const clientTags = clientTagsMap[phoneClean] || []; return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resource: { ...apt, clientTags }, style: { backgroundColor: type?.color || '#3b82f6' } }; });
+  const calendarEvents = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (filterStaff === 'all' || apt.staffId === filterStaff))
+    .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const staff = staffList.find(s => s._id === apt.staffId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); const phoneClean = apt.customerPhone?.replace(/\D/g, ''); const clientTags = clientTagsMap[phoneClean] || []; return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resourceId: apt.staffId || 'unassigned', resource: { ...apt, clientTags, staffName: staff?.name }, style: { backgroundColor: staff?.color || type?.color || '#3b82f6' } }; });
 
-  const filteredAppointments = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (apt.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || apt.customerPhone.includes(searchQuery) || apt.customerEmail?.toLowerCase().includes(searchQuery.toLowerCase())));
+  const filteredAppointments = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (filterStaff === 'all' || apt.staffId === filterStaff) && (apt.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || apt.customerPhone.includes(searchQuery) || apt.customerEmail?.toLowerCase().includes(searchQuery.toLowerCase())));
 
   const getStatusBadge = (s) => ({ pending: { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700' }, confirmed: { text: 'מאושר', color: 'bg-green-100 text-green-700' }, cancelled: { text: 'בוטל', color: 'bg-red-100 text-red-700' }, completed: { text: 'הושלם', color: 'bg-blue-100 text-blue-700' }, no_show: { text: 'לא הגיע', color: 'bg-slate-100 text-slate-700' } }[s] || { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700' });
 
@@ -267,18 +274,36 @@ const Events = () => {
 
       {/* Filters */}
       <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-5 mb-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {view === 'list' && <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">חיפוש</label><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חפש לפי שם, טלפון או אימייל..." className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none" /></div>}
           <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי סטטוס</label><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל הסטטוסים</option><option value="pending">ממתין</option><option value="confirmed">מאושר</option><option value="completed">הושלם</option><option value="cancelled">בוטל</option><option value="no_show">לא הגיע</option></select></div>
           <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי סוג תור</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל הסוגים</option>{appointmentTypes.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}</select></div>
+          {staffList.length > 0 && (
+            <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי עובד</label><select value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל העובדים</option>{staffList.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}</select></div>
+          )}
         </div>
+        {staffList.length > 1 && view === 'calendar' && (
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={showResourceView} onChange={(e) => setShowResourceView(e.target.checked)} className="w-5 h-5 rounded text-blue-600" />
+              <span className="text-sm font-medium text-slate-600">👥 תצוגת עובדים (Resource View)</span>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Calendar/List View */}
       {view === 'calendar' ? (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm" style={{ minHeight: '700px' }}>
           {showHebrewDate && <div className="mb-4 p-3 bg-blue-50 rounded-2xl text-center"><span className="text-lg font-semibold text-blue-600">תאריך עברי: {formatHebrewDate(calendarDate)}</span></div>}
-          <DnDCalendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} onEventDrop={handleEventDrop} onEventResize={handleEventResize} draggableAccessor={draggableAccessor} resizable />
+          <DnDCalendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} onEventDrop={handleEventDrop} onEventResize={handleEventResize} draggableAccessor={draggableAccessor} resizable
+            {...(showResourceView && staffList.length > 1 ? {
+              resources: [{ id: 'unassigned', title: 'ללא עובד' }, ...staffList.map(s => ({ id: s._id, title: s.name }))],
+              resourceIdAccessor: 'resourceId',
+              resourceTitleAccessor: 'title',
+              defaultView: 'day'
+            } : {})}
+          />
         </div>
       ) : (
         <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-sm overflow-hidden">
@@ -313,6 +338,7 @@ const Events = () => {
                 <div className="text-right"><label className="text-slate-500 text-sm font-medium">תאריך</label><p className="text-slate-900 text-lg">{moment(selectedAppointment.date).format('DD/MM/YYYY')}</p></div>
                 <div className="text-right"><label className="text-slate-500 text-sm font-medium">שעה</label><p className="text-slate-900 text-lg">{selectedAppointment.startTime} - {selectedAppointment.endTime}</p></div>
                 <div className="text-right"><label className="text-slate-500 text-sm font-medium">סטטוס</label><p><span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(selectedAppointment.status).color}`}>{getStatusBadge(selectedAppointment.status).text}</span></p></div>
+                {selectedAppointment.staffId && <div className="text-right"><label className="text-slate-500 text-sm font-medium">עובד מטפל</label><p className="text-slate-900 text-lg font-bold">{staffList.find(s => s._id === selectedAppointment.staffId)?.name || 'לא ידוע'}</p></div>}
               </div>
               <div className="flex gap-3 mb-6">
                 <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-3 rounded-full transition-colors">WhatsApp</a>
@@ -376,6 +402,9 @@ const Events = () => {
                 <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">טלפון *</label><input type="tel" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} onBlur={handlePhoneBlur} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" dir="ltr" required />{clientNotes && <div className="mt-2 text-sm text-yellow-800 bg-yellow-50 p-3 rounded-xl border border-yellow-200"><strong>הערות:</strong> {clientNotes}</div>}</div>
                 <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
                 <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+                {staffList.length > 0 && (
+                  <div className="space-y-2 md:col-span-2"><label className="block text-sm font-semibold text-slate-700 text-right">עובד מטפל</label><select name="staffId" value={formData.staffId || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"><option value="">ללא שיוך עובד</option>{staffList.filter(s => s.isActive !== false).map(s => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}</select></div>
+                )}
               </div>
               {/* Recurring Toggle */}
               <div className="mt-5 p-4 bg-indigo-50 rounded-2xl">

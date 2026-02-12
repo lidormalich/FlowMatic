@@ -12,6 +12,11 @@ const eventSchema = new Schema({
         ref: 'appointmentTypes',
         required: false // Optional for blocked times
     },
+    staffId: {
+        type: Schema.Types.ObjectId,
+        ref: 'staff',
+        default: null
+    },
     customerName: {
         type: String,
         required: true,

@@ -59,4 +59,31 @@ router.delete('/:id', passport.authenticate('jwt', { session: false }), async (r
     }
 });
 
+// GET /api/staff/by-service/:serviceId - Get staff that provide a specific service
+router.get('/by-service/:serviceId', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const staff = await Staff.find({
+            businessOwnerId: req.user.id,
+            isActive: true,
+            services: req.params.serviceId
+        });
+        res.json(staff);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching staff by service' });
+    }
+});
+
+// GET /api/staff/public/:username - Get staff for public booking
+router.get('/public/:username', async (req, res) => {
+    try {
+        const User = require('../../models/User');
+        const user = await User.findOne({ username: req.params.username, isActive: true });
+        if (!user) return res.status(404).json({ message: 'עסק לא נמצא' });
+        const staff = await Staff.find({ businessOwnerId: user._id, isActive: true }).select('name role color services');
+        res.json(staff);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching staff' });
+    }
+});
+
 module.exports = router;
