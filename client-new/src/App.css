@@ -24,18 +24,27 @@ body {
    /* Layout handled by Tailwind classes in App.jsx */
 }
 
-/* Push notification banner animation */
+/* Push notification prompt animations */
 .animate-slide-up {
   animation: slideUpBanner 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
 @keyframes slideUpBanner {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(40px) scale(0.95);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

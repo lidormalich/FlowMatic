@@ -5,6 +5,14 @@ import { authApi } from '../services/api';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 
+// Trigger push notification prompt after auth
+function promptPushAfterAuth() {
+  // Clear dismiss timer so banner shows immediately
+  localStorage.removeItem('pushBannerDismissed');
+  // If permission already granted, the hook auto-subscribes.
+  // If not, the banner will pop up on next render.
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   const navigate = useNavigate();
@@ -13,6 +21,7 @@ export const useAuth = () => {
     mutationFn: authApi.login,
     onSuccess: (data) => {
       context.login(data.token);
+      promptPushAfterAuth();
       toast.success('התחברת בהצלחה!');
       navigate('/dashboard');
     },
@@ -34,6 +43,7 @@ export const useAuth = () => {
 
       try {
         context.login(data.token);
+        promptPushAfterAuth();
         toast.success('נרשמת בהצלחה!');
         navigate('/dashboard');
       } catch (err) {

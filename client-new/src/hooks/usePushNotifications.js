@@ -29,6 +29,13 @@ export function usePushNotifications() {
         }
     }, []);
 
+    // Auto-subscribe: if permission is already granted but no active subscription, subscribe silently
+    useEffect(() => {
+        if (isSupported && permission === 'granted' && !isSubscribed && !loading) {
+            subscribe();
+        }
+    }, [isSupported, permission, isSubscribed]);
+
     const checkExistingSubscription = async () => {
         try {
             const registration = await navigator.serviceWorker.getRegistration('/sw-push.js');

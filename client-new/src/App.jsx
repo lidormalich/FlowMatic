@@ -178,7 +178,7 @@ function AppContent() {
           </Routes>
         </main>
       </div>
-      {isAuthenticated && !isPublicRoute && <PushNotificationBanner />}
+      <PushNotificationBanner />
       <ToastContainer
         position="top-left"
         autoClose={3000}
