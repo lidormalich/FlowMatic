@@ -203,6 +203,8 @@ const PublicBooking = () => {
       };
 
       await axios.post(`/api/appointments/public/${username}`, appointmentData);
+      // Prompt push notifications after successful booking
+      localStorage.removeItem('pushBannerDismissed');
       setStep(4);
     } catch (err) {
       toast.error(err.response?.data?.message || 'שגיאה בקביעת התור');

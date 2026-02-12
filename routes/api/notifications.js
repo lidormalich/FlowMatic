@@ -193,7 +193,6 @@ router.post('/admin-broadcast', passport.authenticate('jwt', { session: false })
 
         const users = await User.find({
             role: { $in: filteredRoles },
-            _id: { $ne: req.user.id },
             isActive: { $ne: false }
         }).select('_id');
 
