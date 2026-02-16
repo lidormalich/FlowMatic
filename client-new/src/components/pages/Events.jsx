@@ -1,16 +1,13 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Calendar, momentLocalizer } from 'react-big-calendar';
-import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
-import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import moment from 'moment';
 import 'moment/locale/he';
 import { formatHebrewDate } from '../../utils/hebrewDate';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { toast } from 'react-toastify';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppointments } from '../../hooks/useAppointments';
 import { appointmentTypesApi, appointmentsApi, clientsApi, staffApi, reportsApi } from '../../services/api';
+import { fetchHebcalData, getCachedMonth, setCachedMonth } from '../../services/hebcal';
 import SkeletonLoader from '../common/SkeletonLoader';
 
 const TAG_ICONS = {
@@ -21,30 +18,9 @@ const TAG_ICONS = {
   'קבוע': '💙',
 };
 
-const CalendarEvent = ({ event }) => {
-  const tags = event.resource?.clientTags || [];
-  const tagIcons = tags.map(t => TAG_ICONS[t] || '🏷️').join('');
-  const isRecurring = event.resource?.isRecurring;
-  return (
-    <span>
-      {isRecurring && <span style={{ marginLeft: 4 }}>🔄</span>}
-      {tagIcons && <span style={{ marginLeft: 4 }}>{tagIcons}</span>}
-      {event.title}
-    </span>
-  );
-};
-
 moment.locale('he');
-const localizer = momentLocalizer(moment);
-const DnDCalendar = withDragAndDrop(Calendar);
 
-const messages = {
-  allDay: 'כל היום', previous: 'קודם', next: 'הבא', today: 'היום',
-  month: 'חודש', week: 'שבוע', day: 'יום', agenda: 'סדר יום',
-  date: 'תאריך', time: 'שעה', event: 'אירוע',
-  noEventsInRange: 'אין אירועים בטווח זה',
-  showMore: (total) => `+ עוד ${total}`,
-};
+const DAY_HEADERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
 const Events = () => {
   const { user } = useAuth();
@@ -73,8 +49,10 @@ const Events = () => {
   }, [clientsData]);
 
   const showHebrewDate = user?.showHebrewDate || false;
-  const [view, setView] = useState('calendar');
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [view, setView] = useState(() => localStorage.getItem('calendarViewMode') || 'calendar');
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDayData, setSelectedDayData] = useState(null);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -82,7 +60,6 @@ const Events = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterStaff, setFilterStaff] = useState('all');
-  const [showResourceView, setShowResourceView] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '', staffId: '' });
   const [isRecurring, setIsRecurring] = useState(false);
@@ -94,10 +71,130 @@ const Events = () => {
   const [editingNote, setEditingNote] = useState(false);
   const [noteInput, setNoteInput] = useState('');
 
+  // Hebcal data
+  const [hebcalEvents, setHebcalEvents] = useState({});
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
   const appointmentTypes = appointmentTypesData || [];
   const staffList = staffData || [];
   const loading = appointmentsLoading || typesLoading;
 
+  // Persist view mode
+  useEffect(() => {
+    localStorage.setItem('calendarViewMode', view);
+  }, [view]);
+
+  // Fetch Hebcal data
+  useEffect(() => {
+    const loadHebcal = async () => {
+      try {
+        const cacheKey = `${year}-${month}`;
+        let data = getCachedMonth(cacheKey);
+        if (!data) {
+          data = await fetchHebcalData(year, month);
+          setCachedMonth(cacheKey, data);
+        }
+        // Group by date
+        const grouped = {};
+        data.forEach(event => {
+          const dateKey = event.date.split('T')[0];
+          if (!grouped[dateKey]) grouped[dateKey] = { holidays: [], shabbat: null, parasha: null };
+          if (event.category === 'holiday') {
+            grouped[dateKey].holidays.push({ text: event.hebrew, category: event.category });
+          } else if (event.category === 'parashat') {
+            grouped[dateKey].parasha = { text: event.hebrew, category: event.category };
+          } else if (event.category === 'candles' || event.category === 'havdalah') {
+            grouped[dateKey].shabbat = { text: event.hebrew, time: event.time };
+          }
+        });
+        setHebcalEvents(grouped);
+      } catch (err) {
+        console.error('Failed to load Hebcal data:', err);
+      }
+    };
+    loadHebcal();
+  }, [year, month]);
+
+  // Generate calendar grid
+  const calendarDays = useMemo(() => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    const days = [];
+
+    // Previous month padding
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      days.push({ day: prevMonthLastDay - i, isPadding: true });
+    }
+
+    // Current month days
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push({ day, isPadding: false });
+    }
+
+    // Next month padding
+    const remaining = 42 - days.length;
+    for (let i = 1; i <= remaining; i++) {
+      days.push({ day: i, isPadding: true });
+    }
+
+    return days;
+  }, [year, month]);
+
+  // Group appointments by date
+  const appointmentsByDate = useMemo(() => {
+    const grouped = {};
+    (appointments || []).forEach(apt => {
+      if ((filterStatus !== 'all' && apt.status !== filterStatus) ||
+          (filterType !== 'all' && apt.appointmentTypeId !== filterType) ||
+          (filterStaff !== 'all' && apt.staffId !== filterStaff)) return;
+      const dateKey = moment(apt.date).format('YYYY-MM-DD');
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(apt);
+    });
+    return grouped;
+  }, [appointments, filterStatus, filterType, filterStaff]);
+
+  const monthName = new Date(year, month).toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(year, month - 1));
+    setSelectedDate(null);
+    setSelectedDayData(null);
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1));
+    setSelectedDate(null);
+    setSelectedDayData(null);
+  };
+
+  const handleGoToToday = () => {
+    setCurrentDate(new Date());
+    setSelectedDate(null);
+    setSelectedDayData(null);
+  };
+
+  const handleDayClick = (dateKey) => {
+    const dayAppointments = appointmentsByDate[dateKey] || [];
+    const dayHebcal = hebcalEvents[dateKey] || { holidays: [], shabbat: null, parasha: null };
+    setSelectedDate(dateKey);
+    setSelectedDayData({
+      date: dateKey,
+      appointments: dayAppointments,
+      ...dayHebcal,
+    });
+  };
+
+  const toggleView = () => {
+    setView(prev => prev === 'calendar' ? 'list' : 'calendar');
+  };
+
+  // --- Existing logic (kept intact) ---
   const handlePhoneBlur = async () => {
     if (formData.customerPhone?.length >= 9) {
       try {
@@ -108,12 +205,8 @@ const Events = () => {
             setClientNotes(client.notes);
             toast.info(`נמצאו הערות ללקוח: ${client.notes}`);
           }
-          if (!formData.customerName) {
-            setFormData(prev => ({ ...prev, customerName: client.name }));
-          }
-          if (!formData.customerEmail && client.email) {
-            setFormData(prev => ({ ...prev, customerEmail: client.email }));
-          }
+          if (!formData.customerName) setFormData(prev => ({ ...prev, customerName: client.name }));
+          if (!formData.customerEmail && client.email) setFormData(prev => ({ ...prev, customerEmail: client.email }));
         } else setClientNotes('');
       } catch (e) { console.error('Error searching client:', e); }
     }
@@ -130,12 +223,6 @@ const Events = () => {
       link.remove();
     } catch (e) { toast.error('שגיאה ביצוא תורים'); }
   };
-
-  const formats = useMemo(() => ({
-    dateFormat: showHebrewDate ? (date) => `${date.getDate()} (${formatHebrewDate(date)})` : 'DD',
-    dayFormat: showHebrewDate ? (date) => `${['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'][date.getDay()]} ${date.getDate()} (${formatHebrewDate(date)})` : 'ddd DD',
-    monthHeaderFormat: showHebrewDate ? (date) => `${moment(date).format('MMMM YYYY')} - ${formatHebrewDate(date)}` : 'MMMM YYYY',
-  }), [showHebrewDate]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -202,7 +289,6 @@ const Events = () => {
     setDetailClientNotes('');
     setDetailClientId(null);
     setEditingNote(false);
-    // Fetch client notes
     try {
       const clients = await clientsApi.search(apt.customerPhone);
       const client = clients.find(c => c.phone.replace(/\D/g, '').includes(apt.customerPhone.replace(/\D/g, '')));
@@ -223,167 +309,529 @@ const Events = () => {
       toast.success('הערה עודכנה בהצלחה');
     } catch (e) { toast.error('שגיאה בשמירת הערה'); }
   };
+
   const handleUpdateStatus = (id, status) => { updateAppointment({ id, data: { status } }); setShowDetailModal(false); };
   const resetForm = () => { setFormData({ appointmentTypeId: '', customerName: '', customerEmail: '', customerPhone: '', date: '', startTime: '', description: '', duration: '', price: '', staffId: '' }); setClientNotes(''); setIsRecurring(false); setRecurFrequency('weekly'); setRecurEndDate(''); };
 
-  const handleEventDrop = useCallback(({ event, start }) => {
-    const newDate = moment(start).format('YYYY-MM-DD');
-    const newTime = moment(start).format('HH:mm');
-    if (!window.confirm(`להזיז את התור של ${event.resource.customerName} ל-${newDate} בשעה ${newTime}?`)) return;
-    updateAppointment({ id: event.resource._id, data: { date: newDate, startTime: newTime, endTime: moment(start).add(event.resource.duration || 60, 'minutes').format('HH:mm') } });
-  }, [updateAppointment]);
-
-  const handleEventResize = useCallback(({ event, start, end }) => {
-    const newDuration = Math.round((end - start) / 60000);
-    const newTime = moment(start).format('HH:mm');
-    if (!window.confirm(`לשנות את משך התור של ${event.resource.customerName} ל-${newDuration} דקות?`)) return;
-    updateAppointment({ id: event.resource._id, data: { startTime: newTime, endTime: moment(end).format('HH:mm'), duration: newDuration } });
-  }, [updateAppointment]);
-
-  const draggableAccessor = useCallback((event) => event.resource?.status !== 'cancelled' && event.resource?.status !== 'completed', []);
-
-  const calendarEvents = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (filterStaff === 'all' || apt.staffId === filterStaff))
-    .map(apt => { const type = appointmentTypes.find(t => t._id === apt.appointmentTypeId); const staff = staffList.find(s => s._id === apt.staffId); const [h, m] = apt.startTime.split(':'); const start = new Date(apt.date); start.setHours(+h, +m); const phoneClean = apt.customerPhone?.replace(/\D/g, ''); const clientTags = clientTagsMap[phoneClean] || []; return { ...apt, title: `${apt.customerName} - ${apt.service}`, start, end: new Date(start.getTime() + (apt.duration || 60) * 60000), resourceId: apt.staffId || 'unassigned', resource: { ...apt, clientTags, staffName: staff?.name }, style: { backgroundColor: staff?.color || type?.color || '#3b82f6' } }; });
+  const getStatusBadge = (s) => ({ pending: { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-400' }, confirmed: { text: 'מאושר', color: 'bg-green-100 text-green-700', dot: 'bg-green-400' }, cancelled: { text: 'בוטל', color: 'bg-red-100 text-red-700', dot: 'bg-red-400' }, completed: { text: 'הושלם', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-400' }, no_show: { text: 'לא הגיע', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' }, blocked: { text: 'חסום', color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' } }[s] || { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-400' });
 
   const filteredAppointments = (appointments || []).filter(apt => (filterStatus === 'all' || apt.status === filterStatus) && (filterType === 'all' || apt.appointmentTypeId === filterType) && (filterStaff === 'all' || apt.staffId === filterStaff) && (apt.customerName.toLowerCase().includes(searchQuery.toLowerCase()) || apt.customerPhone.includes(searchQuery) || apt.customerEmail?.toLowerCase().includes(searchQuery.toLowerCase())));
 
-  const getStatusBadge = (s) => ({ pending: { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700' }, confirmed: { text: 'מאושר', color: 'bg-green-100 text-green-700' }, cancelled: { text: 'בוטל', color: 'bg-red-100 text-red-700' }, completed: { text: 'הושלם', color: 'bg-blue-100 text-blue-700' }, no_show: { text: 'לא הגיע', color: 'bg-slate-100 text-slate-700' } }[s] || { text: 'ממתין', color: 'bg-yellow-100 text-yellow-700' });
+  // List view: group by date
+  const listViewDates = useMemo(() => {
+    const grouped = {};
+    filteredAppointments.forEach(apt => {
+      const dateKey = moment(apt.date).format('YYYY-MM-DD');
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(apt);
+    });
+    return Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b)).map(dateKey => ({
+      dateKey,
+      appointments: grouped[dateKey],
+      hebcal: hebcalEvents[dateKey] || { holidays: [], shabbat: null, parasha: null },
+    }));
+  }, [filteredAppointments, hebcalEvents]);
 
-  if (loading) return <div className="p-6 max-w-7xl mx-auto"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">יומן תורים</h1><p className="text-slate-500">טוען...</p></div><SkeletonLoader type="calendar" /></div>;
+  if (loading) return (
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-1">יומן תורים</h1>
+        <p className="text-slate-500">טוען...</p>
+      </div>
+      <SkeletonLoader type="calendar" />
+    </div>
+  );
+
+  const todayKey = moment().format('YYYY-MM-DD');
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24 md:pb-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-8">
-        <div><h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-1">יומן תורים</h1><p className="text-slate-500">צפה ונהל את כל התורים שלך</p></div>
-        <div className="flex flex-wrap gap-3">
-          <button onClick={handleExportAppointments} className="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-4 py-2.5 rounded-full font-semibold shadow-lg shadow-green-500/30 transition-all duration-200 active:scale-95">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>יצא נתונים
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 mb-0.5">יומן תורים</h1>
+          <p className="text-slate-500 text-sm">צפה ונהל את כל התורים שלך</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={handleExportAppointments} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 md:px-4 py-2 rounded-full text-sm font-semibold shadow-lg shadow-emerald-500/20 transition-all active:scale-95">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <span className="hidden sm:inline">יצא נתונים</span>
           </button>
-          <button onClick={() => setView(view === 'calendar' ? 'list' : 'calendar')} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-full font-medium transition-all duration-200 active:scale-95">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">{view === 'calendar' ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />}</svg>{view === 'calendar' ? 'תצוגת רשימה' : 'תצוגת לוח'}
+          <button onClick={() => setShowBlockModal(true)} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3 md:px-4 py-2 rounded-full text-sm font-semibold transition-all active:scale-95">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+            <span className="hidden sm:inline">חסום זמן</span>
           </button>
-          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-full font-semibold shadow-lg shadow-blue-500/30 transition-all duration-200 active:scale-95">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>הוסף תור
+          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-lg shadow-blue-500/20 transition-all active:scale-95">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            הוסף תור
           </button>
-          <button onClick={() => setShowBlockModal(true)} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-full font-semibold transition-all duration-200 active:scale-95">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>חסום זמן
-          </button>
+        </div>
+      </div>
+
+      {/* Navigation Bar */}
+      <div className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl p-3 md:p-4 mb-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          {/* Month Nav */}
+          <div className="flex items-center gap-1 md:gap-2">
+            <button onClick={handleNextMonth} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-lg transition-all active:scale-95">
+              ›
+            </button>
+            <div className="text-center min-w-[120px] md:min-w-[160px]">
+              <h2 className="text-base md:text-xl font-bold text-slate-900">{monthName}</h2>
+              {showHebrewDate && (
+                <p className="text-xs text-blue-600 font-medium">{formatHebrewDate(currentDate)}</p>
+              )}
+            </div>
+            <button onClick={handlePrevMonth} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-lg transition-all active:scale-95">
+              ‹
+            </button>
+          </div>
+
+          {/* Today + View Toggle */}
+          <div className="flex items-center gap-2">
+            <button onClick={handleGoToToday} className="px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all active:scale-95">
+              היום
+            </button>
+            <div className="flex bg-slate-100 rounded-xl p-1">
+              <button
+                onClick={() => view !== 'calendar' && toggleView()}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'calendar' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="hidden sm:inline">לוח</span>
+                <span className="sm:hidden">📅</span>
+              </button>
+              <button
+                onClick={() => view !== 'list' && toggleView()}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${view === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <span className="hidden sm:inline">רשימה</span>
+                <span className="sm:hidden">📋</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-5 mb-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {view === 'list' && <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">חיפוש</label><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חפש לפי שם, טלפון או אימייל..." className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none" /></div>}
-          <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי סטטוס</label><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל הסטטוסים</option><option value="pending">ממתין</option><option value="confirmed">מאושר</option><option value="completed">הושלם</option><option value="cancelled">בוטל</option><option value="no_show">לא הגיע</option></select></div>
-          <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי סוג תור</label><select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל הסוגים</option>{appointmentTypes.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}</select></div>
+      <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-3 md:p-4 mb-4 shadow-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+          {view === 'list' && (
+            <div className="col-span-2 md:col-span-1">
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="חפש שם / טלפון..." className="w-full h-10 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none" />
+            </div>
+          )}
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-10 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none">
+            <option value="all">כל הסטטוסים</option>
+            <option value="pending">ממתין</option>
+            <option value="confirmed">מאושר</option>
+            <option value="completed">הושלם</option>
+            <option value="cancelled">בוטל</option>
+            <option value="no_show">לא הגיע</option>
+          </select>
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="h-10 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none">
+            <option value="all">כל הסוגים</option>
+            {appointmentTypes.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}
+          </select>
           {staffList.length > 0 && (
-            <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סינון לפי עובד</label><select value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none"><option value="all">כל העובדים</option>{staffList.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}</select></div>
+            <select value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)} className="h-10 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none appearance-none">
+              <option value="all">כל העובדים</option>
+              {staffList.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+            </select>
           )}
         </div>
-        {staffList.length > 1 && view === 'calendar' && (
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={showResourceView} onChange={(e) => setShowResourceView(e.target.checked)} className="w-5 h-5 rounded text-blue-600" />
-              <span className="text-sm font-medium text-slate-600">👥 תצוגת עובדים (Resource View)</span>
-            </label>
-          </div>
-        )}
       </div>
 
-      {/* Calendar/List View */}
+      {/* Calendar View */}
       {view === 'calendar' ? (
-        <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-sm" style={{ minHeight: '700px' }}>
-          {showHebrewDate && <div className="mb-4 p-3 bg-blue-50 rounded-2xl text-center"><span className="text-lg font-semibold text-blue-600">תאריך עברי: {formatHebrewDate(calendarDate)}</span></div>}
-          <DnDCalendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: showHebrewDate ? 'calc(100% - 60px)' : '100%', minHeight: '600px' }} messages={messages} onSelectEvent={(e) => { openDetailModal(e.resource); }} onNavigate={setCalendarDate} date={calendarDate} rtl={true} formats={formats} eventPropGetter={(e) => ({ style: e.style })} components={{ event: CalendarEvent }} onEventDrop={handleEventDrop} onEventResize={handleEventResize} draggableAccessor={draggableAccessor} resizable
-            {...(showResourceView && staffList.length > 1 ? {
-              resources: [{ id: 'unassigned', title: 'ללא עובד' }, ...staffList.map(s => ({ id: s._id, title: s.name }))],
-              resourceIdAccessor: 'resourceId',
-              resourceTitleAccessor: 'title',
-              defaultView: 'day'
-            } : {})}
-          />
-        </div>
-      ) : (
-        <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-sm overflow-hidden">
-          {filteredAppointments.length === 0 ? (
-            <div className="p-12 text-center"><div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4"><svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg></div><h3 className="text-xl font-bold text-slate-900 mb-2">אין תורים</h3><p className="text-slate-500">נסה לשנות את הפילטרים או להוסיף תור חדש</p></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50/80 border-b border-slate-100"><tr><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">תאריך</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">שעה</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">לקוח</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">טלפון</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">שירות</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">סטטוס</th><th className="px-6 py-4 text-right font-semibold text-slate-600 text-sm">פעולות</th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredAppointments.sort((a, b) => new Date(b.date) - new Date(a.date)).map(apt => {
-                    const badge = getStatusBadge(apt.status);
-                    return <tr key={apt._id} className="hover:bg-slate-50/50 transition-colors"><td className="px-6 py-4 text-slate-900">{moment(apt.date).format('DD/MM/YYYY')}</td><td className="px-6 py-4 text-slate-900">{apt.startTime}</td><td className="px-6 py-4 font-semibold text-slate-900">{apt.customerName}</td><td className="px-6 py-4 text-slate-600" dir="ltr">{apt.customerPhone}</td><td className="px-6 py-4 text-slate-900">{apt.service}</td><td className="px-6 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${badge.color}`}>{badge.text}</span></td><td className="px-6 py-4"><button onClick={() => openDetailModal(apt)} className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors text-sm font-medium">צפה</button></td></tr>;
-                  })}
-                </tbody>
-              </table>
+        <>
+          <div className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl shadow-sm overflow-hidden">
+            {/* Day Headers */}
+            <div className="grid grid-cols-7 border-b border-slate-100">
+              {DAY_HEADERS.map((day, i) => (
+                <div key={day} className={`text-center py-2.5 md:py-3 text-xs md:text-sm font-semibold ${i === 6 ? 'text-blue-500' : 'text-slate-500'}`}>
+                  {day}
+                </div>
+              ))}
             </div>
+
+            {/* Calendar Grid */}
+            <div className="grid grid-cols-7">
+              {calendarDays.map((item, index) => {
+                if (item.isPadding) {
+                  return (
+                    <div key={`pad-${index}`} className="min-h-[60px] md:min-h-[100px] border-b border-r border-slate-50 bg-slate-50/30 p-1">
+                      <span className="text-xs text-slate-300 font-medium">{item.day}</span>
+                    </div>
+                  );
+                }
+
+                const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`;
+                const dayAppointments = appointmentsByDate[dateKey] || [];
+                const dayHebcal = hebcalEvents[dateKey] || { holidays: [], shabbat: null, parasha: null };
+                const isToday = dateKey === todayKey;
+                const isSelected = selectedDate === dateKey;
+                const hasAppointments = dayAppointments.length > 0;
+                const hasHoliday = dayHebcal.holidays.length > 0;
+                const isSaturday = new Date(dateKey).getDay() === 6;
+
+                return (
+                  <div
+                    key={`day-${item.day}`}
+                    onClick={() => handleDayClick(dateKey)}
+                    className={`
+                      min-h-[60px] md:min-h-[100px] border-b border-r border-slate-100/80
+                      p-1 md:p-1.5 cursor-pointer transition-all duration-200
+                      hover:bg-blue-50/50
+                      ${isSelected ? 'bg-blue-50 ring-2 ring-inset ring-blue-400/50' : ''}
+                      ${isToday ? 'bg-amber-50/50' : ''}
+                      ${hasHoliday ? 'bg-orange-50/30' : ''}
+                    `}
+                  >
+                    {/* Day Number */}
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className={`
+                        text-xs md:text-sm font-bold leading-none
+                        ${isToday ? 'bg-blue-600 text-white w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center' : ''}
+                        ${isSaturday && !isToday ? 'text-blue-500' : ''}
+                        ${!isToday && !isSaturday ? 'text-slate-700' : ''}
+                      `}>
+                        {item.day}
+                      </span>
+                      {hasAppointments && (
+                        <span className="bg-blue-500 text-white text-[9px] md:text-[10px] font-bold rounded-full w-4 h-4 md:w-5 md:h-5 flex items-center justify-center leading-none">
+                          {dayAppointments.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Hebrew Date */}
+                    {showHebrewDate && (
+                      <div className="text-[8px] md:text-[10px] text-slate-400 font-medium mb-0.5 truncate">
+                        {formatHebrewDate(new Date(dateKey))}
+                      </div>
+                    )}
+
+                    {/* Appointments (max 2 visible on desktop, 1 on mobile) */}
+                    <div className="hidden md:block space-y-0.5">
+                      {dayAppointments.slice(0, 2).map((apt, i) => {
+                        const phoneClean = apt.customerPhone?.replace(/\D/g, '');
+                        const clientTags = clientTagsMap[phoneClean] || [];
+                        const tagIcons = clientTags.map(t => TAG_ICONS[t] || '').join('');
+                        const staff = staffList.find(s => s._id === apt.staffId);
+                        return (
+                          <div
+                            key={apt._id}
+                            className="text-[10px] rounded px-1 py-0.5 truncate font-medium text-white leading-tight"
+                            style={{ backgroundColor: staff?.color || '#3b82f6' }}
+                            title={`${apt.customerName} - ${apt.startTime}`}
+                          >
+                            {apt.isRecurring && '🔄'}{tagIcons}{apt.startTime} {apt.customerName}
+                          </div>
+                        );
+                      })}
+                      {dayAppointments.length > 2 && (
+                        <div className="text-[9px] text-blue-500 font-semibold">+ {dayAppointments.length - 2} נוספים</div>
+                      )}
+                    </div>
+
+                    {/* Mobile: just dots */}
+                    <div className="md:hidden flex gap-0.5 flex-wrap">
+                      {dayAppointments.slice(0, 3).map((apt, i) => {
+                        const staff = staffList.find(s => s._id === apt.staffId);
+                        return (
+                          <div key={apt._id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
+                        );
+                      })}
+                    </div>
+
+                    {/* Holiday / Parasha / Shabbat */}
+                    {dayHebcal.parasha && (
+                      <div className="text-[8px] md:text-[9px] text-purple-600 font-semibold truncate mt-0.5" title={dayHebcal.parasha.text}>
+                        <span className="hidden md:inline">📖 </span>{dayHebcal.parasha.text}
+                      </div>
+                    )}
+                    {dayHebcal.holidays.map((h, i) => (
+                      <div key={i} className="text-[8px] md:text-[9px] text-orange-600 font-semibold truncate" title={h.text}>
+                        {h.text}
+                      </div>
+                    ))}
+                    {dayHebcal.shabbat && (
+                      <div className="hidden md:block text-[8px] text-slate-400 truncate" title={dayHebcal.shabbat.text}>
+                        🕯️ {dayHebcal.shabbat.time || dayHebcal.shabbat.text}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Inline Day Details (Mobile) */}
+          {selectedDayData && (
+            <div className="md:hidden mt-4">
+              <InlineDayDetails
+                data={selectedDayData}
+                staffList={staffList}
+                appointmentTypes={appointmentTypes}
+                clientTagsMap={clientTagsMap}
+                getStatusBadge={getStatusBadge}
+                showHebrewDate={showHebrewDate}
+                onAppointmentClick={openDetailModal}
+                onClose={() => { setSelectedDate(null); setSelectedDayData(null); }}
+                onAddClick={() => {
+                  setFormData(prev => ({ ...prev, date: selectedDayData.date }));
+                  setShowAddModal(true);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Desktop Day Details Modal */}
+          {selectedDayData && (
+            <div className="hidden md:block">
+              <DayDetailsModal
+                data={selectedDayData}
+                staffList={staffList}
+                appointmentTypes={appointmentTypes}
+                clientTagsMap={clientTagsMap}
+                getStatusBadge={getStatusBadge}
+                showHebrewDate={showHebrewDate}
+                onAppointmentClick={openDetailModal}
+                onClose={() => { setSelectedDate(null); setSelectedDayData(null); }}
+                onAddClick={() => {
+                  setFormData(prev => ({ ...prev, date: selectedDayData.date }));
+                  setShowAddModal(true);
+                }}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        /* List View */
+        <div className="space-y-3">
+          {listViewDates.length === 0 ? (
+            <div className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl p-10 text-center shadow-sm">
+              <div className="text-5xl mb-3">📅</div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">אין תורים</h3>
+              <p className="text-slate-500 text-sm">נסה לשנות את הפילטרים או להוסיף תור חדש</p>
+            </div>
+          ) : (
+            listViewDates.map(({ dateKey, appointments: dayApts, hebcal: dayHebcal }) => {
+              const hasHebcal = dayHebcal.holidays.length > 0 || dayHebcal.shabbat || dayHebcal.parasha;
+              const formattedDate = moment(dateKey).format('dddd, D בMMMM YYYY');
+              const dayNum = new Date(dateKey).getDate();
+
+              return (
+                <div key={dateKey} className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                  {/* Date Header */}
+                  <div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 md:px-6 py-3 md:py-4 flex items-center gap-3">
+                    <div className="text-center min-w-[48px]">
+                      <div className="text-2xl md:text-3xl font-bold">{dayNum}</div>
+                      <div className="text-[10px] md:text-xs opacity-80">{moment(dateKey).format('MMM')}</div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm md:text-base truncate">{formattedDate}</div>
+                      <div className="text-xs opacity-80">
+                        {dayApts.length} תור{dayApts.length > 1 ? 'ים' : ''}
+                        {showHebrewDate && ` | ${formatHebrewDate(new Date(dateKey))}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hebrew Calendar Info */}
+                  {hasHebcal && (
+                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 px-4 md:px-6 py-2.5 border-b border-orange-100 space-y-1">
+                      {dayHebcal.parasha && (
+                        <div className="flex items-center gap-2 text-xs md:text-sm">
+                          <span>📖</span>
+                          <span className="text-purple-700 font-semibold">{dayHebcal.parasha.text}</span>
+                        </div>
+                      )}
+                      {dayHebcal.holidays.map((holiday, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-xs md:text-sm">
+                          <span>🕎</span>
+                          <span className="text-orange-800 font-semibold">{holiday.text}</span>
+                        </div>
+                      ))}
+                      {dayHebcal.shabbat && (
+                        <div className="flex items-center gap-2 text-xs md:text-sm">
+                          <span>🕯️</span>
+                          <span className="text-slate-600">{dayHebcal.shabbat.text}</span>
+                          {dayHebcal.shabbat.time && <span className="text-slate-400 text-xs">({dayHebcal.shabbat.time})</span>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Appointments */}
+                  <div className="p-3 md:p-4 space-y-2">
+                    {dayApts.map(apt => {
+                      const badge = getStatusBadge(apt.status);
+                      const staff = staffList.find(s => s._id === apt.staffId);
+                      const phoneClean = apt.customerPhone?.replace(/\D/g, '');
+                      const clientTags = clientTagsMap[phoneClean] || [];
+                      const tagIcons = clientTags.map(t => TAG_ICONS[t] || '🏷️').join(' ');
+
+                      return (
+                        <div
+                          key={apt._id}
+                          onClick={() => openDetailModal(apt)}
+                          className="bg-slate-50/80 rounded-xl p-3 md:p-4 hover:bg-slate-100 cursor-pointer transition-all active:scale-[0.99] group"
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Color bar */}
+                            <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="font-bold text-slate-900 text-sm md:text-base">{apt.customerName}</span>
+                                {apt.isRecurring && <span className="text-xs">🔄</span>}
+                                {tagIcons && <span className="text-xs">{tagIcons}</span>}
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] md:text-xs font-semibold ${badge.color}`}>{badge.text}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs md:text-sm text-slate-500">
+                                <span className="font-medium text-slate-700">🕐 {apt.startTime}{apt.endTime ? ` - ${apt.endTime}` : ''}</span>
+                                <span>{apt.service}</span>
+                                {staff && <span className="text-slate-400">| {staff.name}</span>}
+                              </div>
+                              {/* Quick Actions */}
+                              <div className="flex gap-2 mt-2">
+                                {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                                  <a
+                                    href={`https://wa.me/${apt.customerPhone.replace(/\D/g, '').replace(/^0/, '972')}`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 bg-green-500 text-white px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium hover:bg-green-600 active:scale-95 transition-all"
+                                  >
+                                    💬 WhatsApp
+                                  </a>
+                                )}
+                                {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                                  <a
+                                    href={`tel:${apt.customerPhone}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium hover:bg-blue-100 active:scale-95 transition-all"
+                                  >
+                                    📞 התקשר
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                            <svg className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}
 
+      {/* Floating Add Button (Mobile) */}
+      <button
+        onClick={() => setShowAddModal(true)}
+        className="md:hidden fixed bottom-6 left-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center text-3xl font-light active:scale-95 transition-transform z-40 hover:bg-blue-500"
+      >
+        +
+      </button>
+
       {/* Detail Modal */}
       {showDetailModal && selectedAppointment && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-            <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-6 text-white"><h2 className="text-2xl font-bold">פרטי תור</h2></div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">שם לקוח</label><p className="text-slate-900 text-lg font-bold">{selectedAppointment.customerName}</p></div>
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">טלפון</label><p className="text-slate-900 text-lg" dir="ltr">{selectedAppointment.customerPhone}</p></div>
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">שירות</label><p className="text-slate-900 text-lg font-bold">{selectedAppointment.service}</p></div>
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">תאריך</label><p className="text-slate-900 text-lg">{moment(selectedAppointment.date).format('DD/MM/YYYY')}</p></div>
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">שעה</label><p className="text-slate-900 text-lg">{selectedAppointment.startTime} - {selectedAppointment.endTime}</p></div>
-                <div className="text-right"><label className="text-slate-500 text-sm font-medium">סטטוס</label><p><span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(selectedAppointment.status).color}`}>{getStatusBadge(selectedAppointment.status).text}</span></p></div>
-                {selectedAppointment.staffId && <div className="text-right"><label className="text-slate-500 text-sm font-medium">עובד מטפל</label><p className="text-slate-900 text-lg font-bold">{staffList.find(s => s._id === selectedAppointment.staffId)?.name || 'לא ידוע'}</p></div>}
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowDetailModal(false)}>
+          <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 md:p-6 text-white">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold">{selectedAppointment.customerName}</h2>
+                  <p className="text-blue-100 text-sm mt-0.5">{selectedAppointment.service} | {moment(selectedAppointment.date).format('DD/MM/YYYY')} | {selectedAppointment.startTime}</p>
+                </div>
+                <button onClick={() => setShowDetailModal(false)} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
               </div>
-              <div className="flex gap-3 mb-6">
-                <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-3 rounded-full transition-colors">WhatsApp</a>
-                <a href={`tel:${selectedAppointment.customerPhone}`} className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-3 rounded-full transition-colors">התקשר</a>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-5 md:p-6 space-y-4">
+              {/* Status */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(selectedAppointment.status).color}`}>
+                  {getStatusBadge(selectedAppointment.status).text}
+                </span>
+                {selectedAppointment.isRecurring && <span className="text-sm">🔄 תור חוזר</span>}
               </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-right"><label className="text-slate-400 text-xs font-medium">טלפון</label><p className="text-slate-900 font-semibold" dir="ltr">{selectedAppointment.customerPhone}</p></div>
+                {selectedAppointment.customerEmail && <div className="text-right"><label className="text-slate-400 text-xs font-medium">אימייל</label><p className="text-slate-900">{selectedAppointment.customerEmail}</p></div>}
+                <div className="text-right"><label className="text-slate-400 text-xs font-medium">משך</label><p className="text-slate-900">{selectedAppointment.duration} דקות</p></div>
+                {selectedAppointment.price > 0 && <div className="text-right"><label className="text-slate-400 text-xs font-medium">מחיר</label><p className="text-slate-900 font-semibold">₪{selectedAppointment.price}</p></div>}
+                {selectedAppointment.staffId && <div className="text-right"><label className="text-slate-400 text-xs font-medium">עובד מטפל</label><p className="text-slate-900 font-semibold">{staffList.find(s => s._id === selectedAppointment.staffId)?.name || 'לא ידוע'}</p></div>}
+              </div>
+
+              {/* Quick actions */}
+              <div className="flex gap-2">
+                <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors active:scale-95">💬 WhatsApp</a>
+                <a href={`tel:${selectedAppointment.customerPhone}`} className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors active:scale-95">📞 התקשר</a>
+              </div>
+
               {/* Client Notes */}
               {detailClientId && (
-                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-right">
-                  <div className="flex items-center justify-between mb-2">
-                    <button onClick={() => { setEditingNote(!editingNote); setNoteInput(detailClientNotes); }} className="text-sm text-amber-700 hover:text-amber-900 font-medium transition-colors">
-                      {editingNote ? 'ביטול' : 'ערוך'}
-                    </button>
-                    <h4 className="text-sm font-bold text-amber-800">הערות לקוח</h4>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-right">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <button onClick={() => { setEditingNote(!editingNote); setNoteInput(detailClientNotes); }} className="text-xs text-amber-700 hover:text-amber-900 font-medium">{editingNote ? 'ביטול' : 'ערוך'}</button>
+                    <h4 className="text-xs font-bold text-amber-800">הערות לקוח</h4>
                   </div>
                   {editingNote ? (
                     <div className="space-y-2">
-                      <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} rows={3} className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-slate-900 text-right text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none" placeholder="הוסף הערה על הלקוח..." />
-                      <button onClick={handleSaveClientNote} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 rounded-xl text-sm transition-colors">שמור הערה</button>
+                      <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} rows={2} className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-slate-900 text-right text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none" placeholder="הוסף הערה..." />
+                      <button onClick={handleSaveClientNote} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 rounded-lg text-xs transition-colors">שמור</button>
                     </div>
                   ) : (
                     <p className="text-sm text-amber-900">{detailClientNotes || 'אין הערות'}</p>
                   )}
                 </div>
               )}
-              <div className="pt-6 border-t border-slate-100">
-                {selectedAppointment.status === 'pending' && <div className="flex gap-3 mb-4"><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'confirmed')} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-full">אשר</button><button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-full">דחה</button></div>}
-                {selectedAppointment.status === 'confirmed' && <div className="space-y-3 mb-4"><div className="flex gap-3"><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-full">הושלם</button><button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-500 hover:bg-slate-600 text-white font-semibold py-3 rounded-full">לא הגיע</button></div><button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-3 rounded-full">בטל תור</button></div>}
-                {['completed', 'no_show', 'cancelled'].includes(selectedAppointment.status) && <div className="mb-4 p-4 bg-slate-50 rounded-2xl text-right text-sm text-slate-600">{selectedAppointment.status === 'completed' ? 'תור זה הושלם בהצלחה' : selectedAppointment.status === 'no_show' ? 'הלקוח לא הגיע' : 'תור זה בוטל'}</div>}
+
+              {/* Status Actions */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                {selectedAppointment.status === 'pending' && (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'confirmed')} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">אשר</button>
+                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">דחה</button>
+                  </div>
+                )}
+                {selectedAppointment.status === 'confirmed' && (
+                  <>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">הושלם</button>
+                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-500 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">לא הגיע</button>
+                    </div>
+                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-2.5 rounded-xl text-sm transition-colors">בטל תור</button>
+                  </>
+                )}
+                {['completed', 'no_show', 'cancelled'].includes(selectedAppointment.status) && (
+                  <div className="p-3 bg-slate-50 rounded-xl text-center text-sm text-slate-500">
+                    {selectedAppointment.status === 'completed' ? 'תור זה הושלם בהצלחה' : selectedAppointment.status === 'no_show' ? 'הלקוח לא הגיע' : 'תור זה בוטל'}
+                  </div>
+                )}
+                {selectedAppointment.isRecurring && selectedAppointment.recurrenceGroupId && (
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm('לבטל את כל התורים החוזרים העתידיים בסדרה זו?')) return;
+                      try {
+                        const result = await appointmentsApi.cancelRecurring(selectedAppointment.recurrenceGroupId);
+                        toast.success(`בוטלו ${result.cancelled} תורים עתידיים`);
+                        setShowDetailModal(false);
+                      } catch (err) { toast.error('שגיאה בביטול תורים חוזרים'); }
+                    }}
+                    className="w-full bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    🔄 בטל את כל התורים החוזרים העתידיים
+                  </button>
+                )}
               </div>
-              {selectedAppointment.isRecurring && selectedAppointment.recurrenceGroupId && (
-                <button
-                  onClick={async () => {
-                    if (!window.confirm('לבטל את כל התורים החוזרים העתידיים בסדרה זו?')) return;
-                    try {
-                      const result = await appointmentsApi.cancelRecurring(selectedAppointment.recurrenceGroupId);
-                      toast.success(`בוטלו ${result.cancelled} תורים עתידיים`);
-                      setShowDetailModal(false);
-                    } catch (err) { toast.error('שגיאה בביטול תורים חוזרים'); }
-                  }}
-                  className="w-full mb-3 bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold py-3 rounded-full transition-colors"
-                >
-                  🔄 בטל את כל התורים החוזרים העתידיים
-                </button>
-              )}
-              <button onClick={() => setShowDetailModal(false)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-colors">סגור</button>
             </div>
           </div>
         </div>
@@ -391,45 +839,45 @@ const Events = () => {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-            <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-6 text-white"><h2 className="text-2xl font-bold">הוספת תור חדש</h2></div>
-            <form onSubmit={handleAddAppointment} className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סוג תור *</label><select name="appointmentTypeId" value={formData.appointmentTypeId || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none" required><option value="">בחר סוג תור</option>{appointmentTypes.filter(t => t.isActive).map(t => <option key={t._id} value={t._id}>{t.name} ({t.duration} דקות)</option>)}</select></div>
-                <div className="grid grid-cols-2 gap-3"><div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">משך (דקות)</label><input type="number" name="duration" value={formData.duration || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div><div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">מחיר (₪)</label><input type="number" name="price" value={formData.price || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">שם לקוח *</label><input type="text" name="customerName" value={formData.customerName || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">טלפון *</label><input type="tel" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} onBlur={handlePhoneBlur} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" dir="ltr" required />{clientNotes && <div className="mt-2 text-sm text-yellow-800 bg-yellow-50 p-3 rounded-xl border border-yellow-200"><strong>הערות:</strong> {clientNotes}</div>}</div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => { setShowAddModal(false); resetForm(); }}>
+          <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 md:p-6 text-white flex justify-between items-center">
+              <h2 className="text-xl md:text-2xl font-bold">הוספת תור חדש</h2>
+              <button onClick={() => { setShowAddModal(false); resetForm(); }} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+            </div>
+            <form onSubmit={handleAddAppointment} className="overflow-y-auto max-h-[calc(90vh-80px)] p-5 md:p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">סוג תור *</label><select name="appointmentTypeId" value={formData.appointmentTypeId || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none" required><option value="">בחר סוג תור</option>{appointmentTypes.filter(t => t.isActive).map(t => <option key={t._id} value={t._id}>{t.name} ({t.duration} דקות)</option>)}</select></div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">משך (דקות)</label><input type="number" name="duration" value={formData.duration || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
+                  <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">מחיר (₪)</label><input type="number" name="price" value={formData.price || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
+                </div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">שם לקוח *</label><input type="text" name="customerName" value={formData.customerName || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">טלפון *</label><input type="tel" name="customerPhone" value={formData.customerPhone} onChange={handleInputChange} onBlur={handlePhoneBlur} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" dir="ltr" required />{clientNotes && <div className="mt-1 text-xs text-yellow-800 bg-yellow-50 p-2 rounded-lg border border-yellow-200"><strong>הערות:</strong> {clientNotes}</div>}</div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">אימייל</label><input type="email" name="customerEmail" value={formData.customerEmail || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" dir="ltr" /></div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+                <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
                 {staffList.length > 0 && (
-                  <div className="space-y-2 md:col-span-2"><label className="block text-sm font-semibold text-slate-700 text-right">עובד מטפל</label><select name="staffId" value={formData.staffId || ''} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"><option value="">ללא שיוך עובד</option>{staffList.filter(s => s.isActive !== false).map(s => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}</select></div>
+                  <div className="space-y-1.5 md:col-span-2"><label className="block text-xs font-semibold text-slate-600 text-right">עובד מטפל</label><select name="staffId" value={formData.staffId || ''} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none"><option value="">ללא שיוך</option>{staffList.filter(s => s.isActive !== false).map(s => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}</select></div>
                 )}
               </div>
-              {/* Recurring Toggle */}
-              <div className="mt-5 p-4 bg-indigo-50 rounded-2xl">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="w-5 h-5 rounded text-indigo-600" />
+              {/* Recurring */}
+              <div className="mt-4 p-3 bg-indigo-50 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="w-4 h-4 rounded text-indigo-600" />
                   <span className="text-sm font-semibold text-indigo-700">🔄 תור חוזר</span>
                 </label>
                 {isRecurring && (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-indigo-600 text-right">תדירות</label>
-                      <select value={recurFrequency} onChange={(e) => setRecurFrequency(e.target.value)} className="w-full h-10 bg-white border-0 rounded-xl px-3 text-sm text-slate-900 text-right focus:ring-2 focus:ring-indigo-500 outline-none appearance-none">
-                        <option value="weekly">כל שבוע</option>
-                        <option value="biweekly">כל שבועיים</option>
-                        <option value="monthly">כל חודש</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-indigo-600 text-right">עד תאריך</label>
-                      <input type="date" value={recurEndDate} onChange={(e) => setRecurEndDate(e.target.value)} min={formData.date || new Date().toISOString().split('T')[0]} className="w-full h-10 bg-white border-0 rounded-xl px-3 text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                    </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="space-y-1"><label className="block text-[10px] font-medium text-indigo-600 text-right">תדירות</label><select value={recurFrequency} onChange={(e) => setRecurFrequency(e.target.value)} className="w-full h-9 bg-white border-0 rounded-lg px-2 text-xs text-slate-900 text-right focus:ring-2 focus:ring-indigo-500 outline-none appearance-none"><option value="weekly">כל שבוע</option><option value="biweekly">כל שבועיים</option><option value="monthly">כל חודש</option></select></div>
+                    <div className="space-y-1"><label className="block text-[10px] font-medium text-indigo-600 text-right">עד תאריך</label><input type="date" value={recurEndDate} onChange={(e) => setRecurEndDate(e.target.value)} min={formData.date || new Date().toISOString().split('T')[0]} className="w-full h-9 bg-white border-0 rounded-lg px-2 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
                   </div>
                 )}
               </div>
-              <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100"><button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-full shadow-lg shadow-blue-500/30 transition-all">{isRecurring ? '🔄 צור תורים חוזרים' : 'הוסף תור'}</button><button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-all">ביטול</button></div>
+              <div className="flex gap-2 pt-5 mt-5 border-t border-slate-100">
+                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm active:scale-95">{isRecurring ? '🔄 צור תורים חוזרים' : 'הוסף תור'}</button>
+                <button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl transition-all text-sm">ביטול</button>
+              </div>
             </form>
           </div>
         </div>
@@ -437,23 +885,201 @@ const Events = () => {
 
       {/* Block Modal */}
       {showBlockModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-md w-full animate-scale-in">
-            <div className="bg-gradient-to-r from-slate-700 to-slate-800 p-6 text-white"><h2 className="text-2xl font-bold">חסימת זמן ביומן</h2></div>
-            <form onSubmit={handleBlockTime} className="p-6">
-              <div className="space-y-4">
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">משך (דקות)</label><input type="number" name="duration" value={formData.duration || 60} onChange={handleInputChange} min="15" step="15" className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
-                <div className="space-y-2"><label className="block text-sm font-semibold text-slate-700 text-right">סיבה</label><input type="text" name="description" value={formData.description} onChange={handleInputChange} placeholder="הפסקה, חופשה..." className="w-full h-12 bg-slate-100 border-0 rounded-2xl px-4 text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => { setShowBlockModal(false); resetForm(); }}>
+          <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
+            <div className="bg-gradient-to-r from-slate-700 to-slate-800 p-5 text-white flex justify-between items-center">
+              <h2 className="text-xl font-bold">חסימת זמן</h2>
+              <button onClick={() => { setShowBlockModal(false); resetForm(); }} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+            </div>
+            <form onSubmit={handleBlockTime} className="p-5 space-y-3">
+              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
+              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">משך (דקות)</label><input type="number" name="duration" value={formData.duration || 60} onChange={handleInputChange} min="15" step="15" className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
+              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">סיבה</label><input type="text" name="description" value={formData.description} onChange={handleInputChange} placeholder="הפסקה, חופשה..." className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
+              <div className="flex gap-2 pt-4 mt-4 border-t border-slate-100">
+                <button type="submit" className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all active:scale-95">חסום זמן</button>
+                <button type="button" onClick={() => { setShowBlockModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-sm transition-all">ביטול</button>
               </div>
-              <div className="flex gap-3 pt-6 mt-6 border-t border-slate-100"><button type="submit" className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 rounded-full transition-all">חסום זמן</button><button type="button" onClick={() => { setShowBlockModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-3 rounded-full transition-all">ביטול</button></div>
             </form>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };
+
+// Inline Day Details for Mobile
+function InlineDayDetails({ data, staffList, appointmentTypes, clientTagsMap, getStatusBadge, showHebrewDate, onAppointmentClick, onClose, onAddClick }) {
+  const formattedDate = moment(data.date).format('dddd, D בMMMM YYYY');
+
+  return (
+    <div className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-2xl shadow-lg overflow-hidden" style={{ animation: 'slideUp 0.3s ease-out' }}>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 flex justify-between items-center">
+        <div>
+          <h3 className="text-base font-bold">{formattedDate}</h3>
+          {showHebrewDate && <p className="text-blue-100 text-xs">{formatHebrewDate(new Date(data.date))}</p>}
+          <p className="text-blue-200 text-xs mt-0.5">
+            {data.appointments.length > 0 ? `${data.appointments.length} תור${data.appointments.length > 1 ? 'ים' : ''}` : 'אין תורים'}
+          </p>
+        </div>
+        <button onClick={onClose} className="text-white/60 hover:text-white text-xl leading-none">x</button>
+      </div>
+
+      <div className="p-3 space-y-2.5">
+        {/* Hebrew Calendar Info */}
+        {(data.holidays?.length > 0 || data.shabbat || data.parasha) && (
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-2.5 space-y-1">
+            {data.parasha && <div className="flex items-center gap-1.5 text-xs"><span>📖</span><span className="text-purple-700 font-semibold">{data.parasha.text}</span></div>}
+            {data.holidays?.map((h, i) => <div key={i} className="flex items-center gap-1.5 text-xs"><span>🕎</span><span className="text-orange-800 font-semibold">{h.text}</span></div>)}
+            {data.shabbat && <div className="flex items-center gap-1.5 text-xs"><span>🕯️</span><span className="text-slate-600">{data.shabbat.text}</span>{data.shabbat.time && <span className="text-slate-400 text-[10px]">({data.shabbat.time})</span>}</div>}
+          </div>
+        )}
+
+        {/* Add appointment button */}
+        <button onClick={onAddClick} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold py-2 rounded-xl text-xs transition-colors active:scale-95">
+          + הוסף תור ליום זה
+        </button>
+
+        {/* Appointments */}
+        {data.appointments.length > 0 ? (
+          data.appointments.map(apt => {
+            const badge = getStatusBadge(apt.status);
+            const staff = staffList.find(s => s._id === apt.staffId);
+            return (
+              <div
+                key={apt._id}
+                onClick={() => onAppointmentClick(apt)}
+                className="bg-slate-50 rounded-xl p-3 active:bg-slate-100 cursor-pointer transition-all"
+              >
+                <div className="flex items-start gap-2">
+                  <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="font-bold text-slate-900 text-sm">{apt.customerName}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${badge.color}`}>{badge.text}</span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      🕐 {apt.startTime}{apt.endTime ? ` - ${apt.endTime}` : ''} | {apt.service}
+                      {staff && ` | ${staff.name}`}
+                    </div>
+                    <div className="flex gap-1.5 mt-1.5">
+                      {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                        <a href={`https://wa.me/${apt.customerPhone.replace(/\D/g, '').replace(/^0/, '972')}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="bg-green-500 text-white px-2 py-0.5 rounded-lg text-[10px] font-medium active:scale-95">💬 WhatsApp</a>
+                      )}
+                      {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                        <a href={`tel:${apt.customerPhone}`} onClick={(e) => e.stopPropagation()} className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-lg text-[10px] font-medium active:scale-95">📞</a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-center text-slate-400 py-3 text-sm">אין תורים ביום זה</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Desktop Day Details Modal
+function DayDetailsModal({ data, staffList, appointmentTypes, clientTagsMap, getStatusBadge, showHebrewDate, onAppointmentClick, onClose, onAddClick }) {
+  const formattedDate = moment(data.date).format('dddd, D בMMMM YYYY');
+
+  return (
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.25s ease-out' }}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-5 flex justify-between items-start">
+          <div>
+            <h2 className="text-xl font-bold">{formattedDate}</h2>
+            {showHebrewDate && <p className="text-blue-100 text-sm mt-0.5">{formatHebrewDate(new Date(data.date))}</p>}
+            <p className="text-blue-200 text-xs mt-0.5">
+              {data.appointments.length > 0 ? `${data.appointments.length} תור${data.appointments.length > 1 ? 'ים' : ''}` : 'אין תורים'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+        </div>
+
+        <div className="overflow-y-auto max-h-[calc(80vh-100px)] p-5 space-y-3">
+          {/* Hebrew Calendar Info */}
+          {(data.holidays?.length > 0 || data.shabbat || data.parasha) && (
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-3 space-y-1.5">
+              {data.parasha && <div className="flex items-center gap-2 text-sm"><span>📖</span><span className="text-purple-700 font-semibold">{data.parasha.text}</span></div>}
+              {data.holidays?.map((h, i) => <div key={i} className="flex items-center gap-2 text-sm"><span>🕎</span><span className="text-orange-800 font-semibold">{h.text}</span></div>)}
+              {data.shabbat && <div className="flex items-center gap-2 text-sm"><span>🕯️</span><span className="text-slate-600">{data.shabbat.text}</span>{data.shabbat.time && <span className="text-slate-400 text-xs">({data.shabbat.time})</span>}</div>}
+            </div>
+          )}
+
+          {/* Add button */}
+          <button onClick={onAddClick} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold py-2.5 rounded-xl text-sm transition-colors active:scale-95">
+            + הוסף תור ליום זה
+          </button>
+
+          {/* Appointments */}
+          {data.appointments.length > 0 ? (
+            data.appointments.map(apt => {
+              const badge = getStatusBadge(apt.status);
+              const staff = staffList.find(s => s._id === apt.staffId);
+              const phoneClean = apt.customerPhone?.replace(/\D/g, '');
+              const clientTags = clientTagsMap[phoneClean] || [];
+              const tagIcons = clientTags.map(t => TAG_ICONS[t] || '🏷️').join(' ');
+
+              return (
+                <div
+                  key={apt._id}
+                  onClick={() => onAppointmentClick(apt)}
+                  className="bg-slate-50 rounded-xl p-4 hover:bg-slate-100 cursor-pointer transition-all group"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-1.5 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-slate-900">{apt.customerName}</span>
+                        {apt.isRecurring && <span className="text-xs">🔄</span>}
+                        {tagIcons && <span className="text-xs">{tagIcons}</span>}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badge.color}`}>{badge.text}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm text-slate-500">
+                        <span className="font-medium text-slate-700">🕐 {apt.startTime}{apt.endTime ? ` - ${apt.endTime}` : ''}</span>
+                        <span>{apt.service}</span>
+                        {staff && <span className="text-slate-400">| {staff.name}</span>}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                          <a href={`https://wa.me/${apt.customerPhone.replace(/\D/g, '').replace(/^0/, '972')}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="bg-green-500 text-white px-2.5 py-1 rounded-lg text-xs font-medium hover:bg-green-600 active:scale-95 transition-all">💬 WhatsApp</a>
+                        )}
+                        {apt.customerPhone && apt.customerPhone !== '0000000000' && (
+                          <a href={`tel:${apt.customerPhone}`} onClick={(e) => e.stopPropagation()} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-xs font-medium hover:bg-blue-100 active:scale-95 transition-all">📞 התקשר</a>
+                        )}
+                      </div>
+                    </div>
+                    <svg className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-6 text-slate-400">
+              <div className="text-3xl mb-2">📅</div>
+              <p className="text-sm">אין תורים ביום זה</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default Events;
