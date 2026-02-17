@@ -86,6 +86,15 @@ const UserSchema = new Schema({
         type: Boolean,
         default: false
     },
+    showHebrewDateInBooking: {
+        type: Boolean,
+        default: false
+    },
+    hebrewCalendar: {
+        showHolidays: { type: Boolean, default: true },
+        showShabbat: { type: Boolean, default: true },
+        showEvents: { type: Boolean, default: true }
+    },
     businessAddress: {
         type: String,
         default: ''

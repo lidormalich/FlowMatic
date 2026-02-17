@@ -15,7 +15,7 @@ const BUFFER_MINUTES = 5; // מרווח ביטחון בין תורים
 const appointmentValidation = Joi.object({
   appointmentTypeId: Joi.string().optional().allow(null, ''),
   customerName: Joi.string().min(2).max(100).required(),
-  customerPhone: Joi.string().pattern(/^05\d{8}$/).optional().allow(''),
+  customerPhone: Joi.string().pattern(/^0\d{8,9}$/).optional().allow('', '0000000000'),
   customerEmail: Joi.string().email().optional().allow(''),
   date: Joi.date().min('2000-01-01').required(), // Relaxed date check
   startTime: Joi.string().pattern(/^\d{2}:\d{2}$/).required(),
@@ -767,6 +767,61 @@ router.delete('/recurring/:groupId', passport.authenticate('jwt', { session: fal
     res.json({ message: `בוטלו ${result.modifiedCount} תורים עתידיים`, cancelled: result.modifiedCount });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// POST /api/appointments/block-range - Block a date range (full days)
+router.post('/block-range', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    const { startDate, endDate, description, staffId } = req.body;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: 'תאריך התחלה וסיום הם שדות חובה' });
+    }
+
+    const start = moment(startDate).startOf('day');
+    const end = moment(endDate).startOf('day');
+
+    if (end.isBefore(start)) {
+      return res.status(400).json({ message: 'תאריך סיום חייב להיות אחרי תאריך התחלה' });
+    }
+
+    const maxDays = 90;
+    if (end.diff(start, 'days') > maxDays) {
+      return res.status(400).json({ message: `ניתן לחסום עד ${maxDays} ימים בבת אחת` });
+    }
+
+    const blockedEvents = [];
+    const current = start.clone();
+
+    while (current.isSameOrBefore(end)) {
+      const newBlock = new Event({
+        businessOwnerId: req.user.id,
+        staffId: staffId || null,
+        customerName: 'זמן חסום',
+        customerPhone: '0000000000',
+        date: current.toDate(),
+        startTime: '00:00',
+        endTime: '23:59',
+        duration: 1439,
+        service: description || 'חסימת ימים',
+        description: description || '',
+        status: 'blocked',
+        price: 0
+      });
+      blockedEvents.push(newBlock);
+      current.add(1, 'day');
+    }
+
+    await Event.insertMany(blockedEvents);
+
+    res.status(201).json({
+      message: `נחסמו ${blockedEvents.length} ימים בהצלחה`,
+      count: blockedEvents.length
+    });
+  } catch (err) {
+    console.error('Block range error:', err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
 });

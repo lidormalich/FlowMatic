@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const mongoose = require('mongoose');
+const multer = require('multer');
 const Client = require('../../models/Client');
 const Event = require('../../models/Event');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // GET /api/clients - Get all clients for authenticated user
 router.get('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
@@ -286,6 +289,108 @@ router.delete('/:id', passport.authenticate('jwt', { session: false }), async (r
     } catch (err) {
         console.error('Delete client error:', err);
         res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
+
+// POST /api/clients/import - Import clients from CSV
+router.post('/import', passport.authenticate('jwt', { session: false }), upload.single('file'), async (req, res) => {
+    try {
+        const businessOwnerId = req.user.id;
+
+        let rows = [];
+
+        if (req.file) {
+            // Parse CSV file
+            const content = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, ''); // strip BOM
+            const lines = content.split(/\r?\n/).filter(line => line.trim());
+            if (lines.length < 2) {
+                return res.status(400).json({ message: 'הקובץ ריק או לא תקין' });
+            }
+
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+
+            // Map common Hebrew/English header names
+            const headerMap = {};
+            headers.forEach((h, i) => {
+                const lower = h.toLowerCase();
+                if (['שם', 'name', 'שם מלא', 'שם לקוח'].includes(lower)) headerMap.name = i;
+                else if (['טלפון', 'phone', 'מספר טלפון', 'נייד', 'tel'].includes(lower)) headerMap.phone = i;
+                else if (['אימייל', 'email', 'מייל', 'דואר אלקטרוני'].includes(lower)) headerMap.email = i;
+                else if (['הערות', 'notes', 'הערה'].includes(lower)) headerMap.notes = i;
+            });
+
+            if (headerMap.name === undefined || headerMap.phone === undefined) {
+                return res.status(400).json({ message: 'הקובץ חייב להכיל עמודות "שם" ו"טלפון" לפחות' });
+            }
+
+            for (let i = 1; i < lines.length; i++) {
+                // Simple CSV parse (handles quoted fields)
+                const cols = [];
+                let current = '';
+                let inQuotes = false;
+                for (const char of lines[i]) {
+                    if (char === '"') { inQuotes = !inQuotes; }
+                    else if (char === ',' && !inQuotes) { cols.push(current.trim()); current = ''; }
+                    else { current += char; }
+                }
+                cols.push(current.trim());
+
+                const name = cols[headerMap.name]?.replace(/^"|"$/g, '').trim();
+                const phone = cols[headerMap.phone]?.replace(/^"|"$/g, '').replace(/[\s\-()]/g, '').trim();
+                const email = headerMap.email !== undefined ? cols[headerMap.email]?.replace(/^"|"$/g, '').trim() : '';
+                const notes = headerMap.notes !== undefined ? cols[headerMap.notes]?.replace(/^"|"$/g, '').trim() : '';
+
+                if (name && phone && phone.length >= 7) {
+                    rows.push({ name, phone, email: email || '', notes: notes || '' });
+                }
+            }
+        } else if (req.body.clients && Array.isArray(req.body.clients)) {
+            // JSON array of clients
+            rows = req.body.clients.filter(c => c.name && c.phone);
+        } else {
+            return res.status(400).json({ message: 'לא נמצא קובץ או נתונים לייבוא' });
+        }
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: 'לא נמצאו לקוחות תקינים בקובץ' });
+        }
+
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+
+        for (const row of rows) {
+            const existing = await Client.findOne({ businessOwnerId, phone: row.phone });
+            if (existing) {
+                // Update name/email if they were empty
+                let changed = false;
+                if (!existing.name || existing.name === 'לקוח ללא שם') { existing.name = row.name; changed = true; }
+                if (!existing.email && row.email) { existing.email = row.email; changed = true; }
+                if (!existing.notes && row.notes) { existing.notes = row.notes; changed = true; }
+                if (changed) { await existing.save(); updated++; }
+                else { skipped++; }
+            } else {
+                await Client.create({
+                    businessOwnerId,
+                    name: row.name,
+                    phone: row.phone,
+                    email: row.email,
+                    notes: row.notes
+                });
+                created++;
+            }
+        }
+
+        res.json({
+            message: `ייבוא הושלם: ${created} נוספו, ${updated} עודכנו, ${skipped} דולגו`,
+            created,
+            updated,
+            skipped,
+            total: rows.length
+        });
+    } catch (err) {
+        console.error('Import clients error:', err);
+        res.status(500).json({ message: 'שגיאה בייבוא לקוחות' });
     }
 });
 

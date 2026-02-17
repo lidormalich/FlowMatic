@@ -102,6 +102,15 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
         if (req.body.businessDescription !== undefined) user.businessDescription = req.body.businessDescription;
         if (req.body.businessAddress !== undefined) user.businessAddress = req.body.businessAddress;
         if (req.body.showHebrewDate !== undefined) user.showHebrewDate = req.body.showHebrewDate;
+        if (req.body.showHebrewDateInBooking !== undefined) user.showHebrewDateInBooking = req.body.showHebrewDateInBooking;
+
+        // Hebrew Calendar Settings
+        if (req.body.hebrewCalendar) {
+            if (!user.hebrewCalendar) user.hebrewCalendar = {};
+            if (req.body.hebrewCalendar.showHolidays !== undefined) user.hebrewCalendar.showHolidays = req.body.hebrewCalendar.showHolidays;
+            if (req.body.hebrewCalendar.showShabbat !== undefined) user.hebrewCalendar.showShabbat = req.body.hebrewCalendar.showShabbat;
+            if (req.body.hebrewCalendar.showEvents !== undefined) user.hebrewCalendar.showEvents = req.body.hebrewCalendar.showEvents;
+        }
 
         // Business Hours (working hours per day)
         if (req.body.businessHours) {

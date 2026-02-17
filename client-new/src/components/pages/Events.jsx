@@ -24,7 +24,7 @@ const DAY_HEADERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
 const Events = () => {
   const { user } = useAuth();
-  const { appointments, isLoading: appointmentsLoading, createAppointment, updateAppointment, cancelAppointment } = useAppointments();
+  const { appointments, isLoading: appointmentsLoading, createAppointment, updateAppointment, cancelAppointment, blockRange } = useAppointments();
   const { data: appointmentTypesData, isLoading: typesLoading } = useQuery({
     queryKey: ['appointmentTypes'],
     queryFn: appointmentTypesApi.getAll
@@ -49,6 +49,7 @@ const Events = () => {
   }, [clientsData]);
 
   const showHebrewDate = user?.showHebrewDate || false;
+  const hebrewCalSettings = user?.hebrewCalendar || { showHolidays: true, showShabbat: true, showEvents: true };
   const [view, setView] = useState(() => localStorage.getItem('calendarViewMode') || 'calendar');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
@@ -57,6 +58,8 @@ const Events = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockMode, setBlockMode] = useState('hours'); // 'hours' | 'dates'
+  const [blockEndDate, setBlockEndDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterStaff, setFilterStaff] = useState('all');
@@ -96,16 +99,16 @@ const Events = () => {
           data = await fetchHebcalData(year, month);
           setCachedMonth(cacheKey, data);
         }
-        // Group by date
+        // Group by date, respecting user toggle settings
         const grouped = {};
         data.forEach(event => {
           const dateKey = event.date.split('T')[0];
           if (!grouped[dateKey]) grouped[dateKey] = { holidays: [], shabbat: null, parasha: null };
-          if (event.category === 'holiday') {
+          if (event.category === 'holiday' && (hebrewCalSettings.showHolidays || hebrewCalSettings.showEvents)) {
             grouped[dateKey].holidays.push({ text: event.hebrew, category: event.category });
-          } else if (event.category === 'parashat') {
+          } else if (event.category === 'parashat' && hebrewCalSettings.showShabbat) {
             grouped[dateKey].parasha = { text: event.hebrew, category: event.category };
-          } else if (event.category === 'candles' || event.category === 'havdalah') {
+          } else if ((event.category === 'candles' || event.category === 'havdalah') && hebrewCalSettings.showShabbat) {
             grouped[dateKey].shabbat = { text: event.hebrew, time: event.time };
           }
         });
@@ -115,7 +118,7 @@ const Events = () => {
       }
     };
     loadHebcal();
-  }, [year, month]);
+  }, [year, month, hebrewCalSettings.showHolidays, hebrewCalSettings.showShabbat, hebrewCalSettings.showEvents]);
 
   // Generate calendar grid
   const calendarDays = useMemo(() => {
@@ -276,9 +279,14 @@ const Events = () => {
 
   const handleBlockTime = async (e) => {
     e.preventDefault();
-    if (!formData.date || !formData.startTime) { toast.error('תאריך ושעה הם שדות חובה'); return; }
-    createAppointment({ date: formData.date, startTime: formData.startTime, duration: +(formData.duration || 60), status: 'blocked', customerName: 'זמן חסום', customerPhone: '0000000000', service: formData.description || 'חסימה יזומה', description: formData.description });
-    setShowBlockModal(false); resetForm();
+    if (blockMode === 'dates') {
+      if (!formData.date || !blockEndDate) { toast.error('תאריך התחלה וסיום הם שדות חובה'); return; }
+      blockRange({ startDate: formData.date, endDate: blockEndDate, description: formData.description, staffId: formData.staffId || null });
+    } else {
+      if (!formData.date || !formData.startTime) { toast.error('תאריך ושעה הם שדות חובה'); return; }
+      createAppointment({ date: formData.date, startTime: formData.startTime, duration: +(formData.duration || 60), status: 'blocked', customerName: 'זמן חסום', customerPhone: '0000000000', service: formData.description || 'חסימה יזומה', description: formData.description });
+    }
+    setShowBlockModal(false); setBlockMode('hours'); setBlockEndDate(''); resetForm();
   };
 
   const handleCancelAppointment = (id) => { if (window.confirm('האם אתה בטוח שברצונך לבטל תור זה?')) { cancelAppointment(id); setShowDetailModal(false); } };
@@ -608,116 +616,115 @@ const Events = () => {
         </>
       ) : (
         /* List View */
-        <div className="space-y-3">
+        <div className="space-y-4">
           {listViewDates.length === 0 ? (
-            <div className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl p-10 text-center shadow-sm">
-              <div className="text-5xl mb-3">📅</div>
-              <h3 className="text-lg font-bold text-slate-900 mb-1">אין תורים</h3>
-              <p className="text-slate-500 text-sm">נסה לשנות את הפילטרים או להוסיף תור חדש</p>
+            <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/60 dark:border-slate-700/50 p-12 text-center shadow-sm">
+              <div className="w-16 h-16 bg-slate-50 dark:bg-slate-700/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">אין תורים</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">נסה לשנות את הפילטרים או להוסיף תור חדש</p>
             </div>
           ) : (
             listViewDates.map(({ dateKey, appointments: dayApts, hebcal: dayHebcal }) => {
               const hasHebcal = dayHebcal.holidays.length > 0 || dayHebcal.shabbat || dayHebcal.parasha;
               const formattedDate = moment(dateKey).format('dddd, D בMMMM YYYY');
               const dayNum = new Date(dateKey).getDate();
+              const isDateToday = dateKey === todayKey;
 
               return (
-                <div key={dateKey} className="bg-white/80 backdrop-blur-xl border border-white/40 rounded-2xl shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                <div key={dateKey} className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200/60 dark:border-slate-700/50 shadow-sm overflow-hidden transition-all hover:shadow-lg hover:shadow-slate-200/50 dark:hover:shadow-slate-900/50">
                   {/* Date Header */}
-                  <div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white px-4 md:px-6 py-3 md:py-4 flex items-center gap-3">
-                    <div className="text-center min-w-[48px]">
-                      <div className="text-2xl md:text-3xl font-bold">{dayNum}</div>
-                      <div className="text-[10px] md:text-xs opacity-80">{moment(dateKey).format('MMM')}</div>
+                  <div className="px-5 md:px-6 py-4 flex items-center gap-4 border-b border-slate-100 dark:border-slate-700/50">
+                    <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex flex-col items-center justify-center flex-shrink-0 ${isDateToday ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-slate-50 dark:bg-slate-700/50 text-slate-900 dark:text-white'}`}>
+                      <span className="text-lg md:text-xl font-bold leading-none">{dayNum}</span>
+                      <span className={`text-[10px] font-semibold ${isDateToday ? 'text-blue-100' : 'text-slate-400'}`}>{moment(dateKey).format('MMM')}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm md:text-base truncate">{formattedDate}</div>
-                      <div className="text-xs opacity-80">
-                        {dayApts.length} תור{dayApts.length > 1 ? 'ים' : ''}
-                        {showHebrewDate && ` | ${formatHebrewDate(new Date(dateKey))}`}
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-sm md:text-base truncate">{formattedDate}</h3>
+                        {isDateToday && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">היום</span>}
                       </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        {dayApts.length} תור{dayApts.length > 1 ? 'ים' : ''}
+                        {showHebrewDate && <span className="text-blue-500 mr-2">{formatHebrewDate(new Date(dateKey))}</span>}
+                      </p>
                     </div>
                   </div>
 
                   {/* Hebrew Calendar Info */}
                   {hasHebcal && (
-                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 px-4 md:px-6 py-2.5 border-b border-orange-100 space-y-1">
+                    <div className="bg-amber-50/50 dark:bg-amber-900/10 px-5 md:px-6 py-2.5 border-b border-amber-100/50 dark:border-amber-900/20 flex flex-wrap gap-x-4 gap-y-1">
                       {dayHebcal.parasha && (
-                        <div className="flex items-center gap-2 text-xs md:text-sm">
-                          <span>📖</span>
-                          <span className="text-purple-700 font-semibold">{dayHebcal.parasha.text}</span>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-purple-700 dark:text-purple-400 font-semibold">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                          {dayHebcal.parasha.text}
+                        </span>
                       )}
                       {dayHebcal.holidays.map((holiday, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-xs md:text-sm">
-                          <span>🕎</span>
-                          <span className="text-orange-800 font-semibold">{holiday.text}</span>
-                        </div>
+                        <span key={idx} className="inline-flex items-center gap-1.5 text-xs text-orange-800 dark:text-orange-400 font-semibold">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                          {holiday.text}
+                        </span>
                       ))}
                       {dayHebcal.shabbat && (
-                        <div className="flex items-center gap-2 text-xs md:text-sm">
-                          <span>🕯️</span>
-                          <span className="text-slate-600">{dayHebcal.shabbat.text}</span>
-                          {dayHebcal.shabbat.time && <span className="text-slate-400 text-xs">({dayHebcal.shabbat.time})</span>}
-                        </div>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" /></svg>
+                          {dayHebcal.shabbat.text}
+                          {dayHebcal.shabbat.time && <span className="text-slate-400">({dayHebcal.shabbat.time})</span>}
+                        </span>
                       )}
                     </div>
                   )}
 
-                  {/* Appointments */}
-                  <div className="p-3 md:p-4 space-y-2">
+                  {/* Appointments List */}
+                  <div className="divide-y divide-slate-100 dark:divide-slate-700/30">
                     {dayApts.map(apt => {
                       const badge = getStatusBadge(apt.status);
                       const staff = staffList.find(s => s._id === apt.staffId);
                       const phoneClean = apt.customerPhone?.replace(/\D/g, '');
                       const clientTags = clientTagsMap[phoneClean] || [];
-                      const tagIcons = clientTags.map(t => TAG_ICONS[t] || '🏷️').join(' ');
+                      const tagIcons = clientTags.map(t => TAG_ICONS[t] || '').join(' ');
 
                       return (
                         <div
                           key={apt._id}
                           onClick={() => openDetailModal(apt)}
-                          className="bg-slate-50/80 rounded-xl p-3 md:p-4 hover:bg-slate-100 cursor-pointer transition-all active:scale-[0.99] group"
+                          className="flex items-center gap-3 px-5 md:px-6 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-700/20 cursor-pointer transition-all active:bg-slate-100 dark:active:bg-slate-700/40 group"
                         >
-                          <div className="flex items-start gap-3">
-                            {/* Color bar */}
-                            <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <span className="font-bold text-slate-900 text-sm md:text-base">{apt.customerName}</span>
-                                {apt.isRecurring && <span className="text-xs">🔄</span>}
-                                {tagIcons && <span className="text-xs">{tagIcons}</span>}
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] md:text-xs font-semibold ${badge.color}`}>{badge.text}</span>
-                              </div>
-                              <div className="flex items-center gap-3 text-xs md:text-sm text-slate-500">
-                                <span className="font-medium text-slate-700">🕐 {apt.startTime}{apt.endTime ? ` - ${apt.endTime}` : ''}</span>
-                                <span>{apt.service}</span>
-                                {staff && <span className="text-slate-400">| {staff.name}</span>}
-                              </div>
-                              {/* Quick Actions */}
-                              <div className="flex gap-2 mt-2">
-                                {apt.customerPhone && apt.customerPhone !== '0000000000' && (
-                                  <a
-                                    href={`https://wa.me/${apt.customerPhone.replace(/\D/g, '').replace(/^0/, '972')}`}
-                                    target="_blank" rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex items-center gap-1 bg-green-500 text-white px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium hover:bg-green-600 active:scale-95 transition-all"
-                                  >
-                                    💬 WhatsApp
-                                  </a>
-                                )}
-                                {apt.customerPhone && apt.customerPhone !== '0000000000' && (
-                                  <a
-                                    href={`tel:${apt.customerPhone}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg text-[10px] md:text-xs font-medium hover:bg-blue-100 active:scale-95 transition-all"
-                                  >
-                                    📞 התקשר
-                                  </a>
-                                )}
-                              </div>
+                          {/* Time Column */}
+                          <div className="w-14 md:w-16 flex-shrink-0 text-center">
+                            <span className="text-sm md:text-base font-bold text-slate-900 dark:text-white">{apt.startTime}</span>
+                            {apt.endTime && <p className="text-[10px] text-slate-400">{apt.endTime}</p>}
+                          </div>
+
+                          {/* Color indicator */}
+                          <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: staff?.color || '#3b82f6' }} />
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-slate-900 dark:text-white text-sm">{apt.customerName}</span>
+                              {apt.isRecurring && (
+                                <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                              )}
+                              {tagIcons && <span className="text-xs">{tagIcons}</span>}
                             </div>
-                            <svg className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              <span>{apt.service}</span>
+                              {apt.duration && <span>{apt.duration} דק׳</span>}
+                              {staff && <span>| {staff.name}</span>}
+                            </div>
+                          </div>
+
+                          {/* Status + Arrow */}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.color}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
+                              {badge.text}
+                            </span>
+                            <svg className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-blue-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                             </svg>
                           </div>
                         </div>
@@ -742,78 +749,171 @@ const Events = () => {
       {/* Detail Modal */}
       {showDetailModal && selectedAppointment && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => setShowDetailModal(false)}>
-          <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 md:p-6 text-white">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-xl md:text-2xl font-bold">{selectedAppointment.customerName}</h2>
-                  <p className="text-blue-100 text-sm mt-0.5">{selectedAppointment.service} | {moment(selectedAppointment.date).format('DD/MM/YYYY')} | {selectedAppointment.startTime}</p>
-                </div>
-                <button onClick={() => setShowDetailModal(false)} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
-              </div>
+          <div
+            className="bg-white dark:bg-slate-800 rounded-t-[2rem] md:rounded-[2rem] shadow-2xl max-w-lg w-full max-h-[92vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: 'modalSlideUp 0.35s cubic-bezier(0.32,0.72,0,1)' }}
+          >
+            {/* Handle (mobile) */}
+            <div className="md:hidden flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-600 rounded-full" />
             </div>
-            <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-5 md:p-6 space-y-4">
-              {/* Status */}
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadge(selectedAppointment.status).color}`}>
+
+            {/* Header */}
+            <div className="px-6 pt-4 md:pt-6 pb-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">{selectedAppointment.customerName}</h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-0.5">{selectedAppointment.service}</p>
+                </div>
+                <button onClick={() => setShowDetailModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors mr-3">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              {/* Status Badge */}
+              <div className="flex items-center gap-2 mt-3">
+                <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${getStatusBadge(selectedAppointment.status).color}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${getStatusBadge(selectedAppointment.status).dot}`} />
                   {getStatusBadge(selectedAppointment.status).text}
                 </span>
-                {selectedAppointment.isRecurring && <span className="text-sm">🔄 תור חוזר</span>}
+                {selectedAppointment.isRecurring && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    חוזר
+                  </span>
+                )}
               </div>
+            </div>
 
-              {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-right"><label className="text-slate-400 text-xs font-medium">טלפון</label><p className="text-slate-900 font-semibold" dir="ltr">{selectedAppointment.customerPhone}</p></div>
-                {selectedAppointment.customerEmail && <div className="text-right"><label className="text-slate-400 text-xs font-medium">אימייל</label><p className="text-slate-900">{selectedAppointment.customerEmail}</p></div>}
-                <div className="text-right"><label className="text-slate-400 text-xs font-medium">משך</label><p className="text-slate-900">{selectedAppointment.duration} דקות</p></div>
-                {selectedAppointment.price > 0 && <div className="text-right"><label className="text-slate-400 text-xs font-medium">מחיר</label><p className="text-slate-900 font-semibold">₪{selectedAppointment.price}</p></div>}
-                {selectedAppointment.staffId && <div className="text-right"><label className="text-slate-400 text-xs font-medium">עובד מטפל</label><p className="text-slate-900 font-semibold">{staffList.find(s => s._id === selectedAppointment.staffId)?.name || 'לא ידוע'}</p></div>}
+            <div className="overflow-y-auto max-h-[calc(92vh-120px)] px-6 pb-6 space-y-4">
+              {/* Details - iOS grouped list */}
+              <div className="bg-slate-50 dark:bg-slate-700/30 rounded-2xl overflow-hidden">
+                {/* Date & Time */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </div>
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className="text-[11px] text-slate-400 font-semibold">תאריך ושעה</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">{moment(selectedAppointment.date).format('DD/MM/YYYY')} | {selectedAppointment.startTime}{selectedAppointment.endTime ? ` - ${selectedAppointment.endTime}` : ''}</p>
+                  </div>
+                </div>
+                <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/30" />
+                {/* Phone */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                  </div>
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className="text-[11px] text-slate-400 font-semibold">טלפון</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white" dir="ltr">{selectedAppointment.customerPhone}</p>
+                  </div>
+                </div>
+                {selectedAppointment.customerEmail && (
+                  <>
+                    <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/30" />
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-violet-600 dark:text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      </div>
+                      <div className="flex-1 min-w-0 text-right">
+                        <p className="text-[11px] text-slate-400 font-semibold">אימייל</p>
+                        <p className="text-sm text-slate-900 dark:text-white truncate">{selectedAppointment.customerEmail}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/30" />
+                {/* Duration & Price */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                  </div>
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className="text-[11px] text-slate-400 font-semibold">משך ומחיר</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {selectedAppointment.duration} דקות
+                      {selectedAppointment.price > 0 && <span className="text-amber-600 dark:text-amber-400 mr-2">₪{selectedAppointment.price}</span>}
+                    </p>
+                  </div>
+                </div>
+                {selectedAppointment.staffId && (
+                  <>
+                    <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/30" />
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="w-8 h-8 rounded-xl bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-pink-600 dark:text-pink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                      </div>
+                      <div className="flex-1 min-w-0 text-right">
+                        <p className="text-[11px] text-slate-400 font-semibold">עובד מטפל</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{staffList.find(s => s._id === selectedAppointment.staffId)?.name || 'לא ידוע'}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Quick actions */}
               <div className="flex gap-2">
-                <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors active:scale-95">💬 WhatsApp</a>
-                <a href={`tel:${selectedAppointment.customerPhone}`} className="flex-1 text-center bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors active:scale-95">📞 התקשר</a>
+                <a href={`https://wa.me/${selectedAppointment.customerPhone?.replace(/\D/g, '').replace(/^0/, '972')}?text=${encodeURIComponent(`שלום ${selectedAppointment.customerName}, `)}`} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold px-4 py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-emerald-500/20">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.625.846 5.059 2.284 7.034L.789 23.492a.5.5 0 00.612.638l4.76-1.268A11.942 11.942 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-2.37 0-4.567-.7-6.42-1.9l-.145-.09-3.118.83.876-3.006-.105-.157A9.96 9.96 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+                  WhatsApp
+                </a>
+                <a href={`tel:${selectedAppointment.customerPhone}`} className="flex-1 flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-semibold px-4 py-3 rounded-2xl text-sm transition-all active:scale-95">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                  התקשר
+                </a>
               </div>
 
               {/* Client Notes */}
               {detailClientId && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-right">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <button onClick={() => { setEditingNote(!editingNote); setNoteInput(detailClientNotes); }} className="text-xs text-amber-700 hover:text-amber-900 font-medium">{editingNote ? 'ביטול' : 'ערוך'}</button>
-                    <h4 className="text-xs font-bold text-amber-800">הערות לקוח</h4>
+                <div className="bg-amber-50 dark:bg-amber-900/10 rounded-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <button onClick={() => { setEditingNote(!editingNote); setNoteInput(detailClientNotes); }} className="text-xs text-amber-700 dark:text-amber-400 hover:text-amber-900 font-semibold">{editingNote ? 'ביטול' : 'ערוך'}</button>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-amber-800 dark:text-amber-300">הערות לקוח</h4>
+                      <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                    </div>
                   </div>
                   {editingNote ? (
-                    <div className="space-y-2">
-                      <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} rows={2} className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-slate-900 text-right text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none" placeholder="הוסף הערה..." />
-                      <button onClick={handleSaveClientNote} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 rounded-lg text-xs transition-colors">שמור</button>
+                    <div className="px-4 pb-4 space-y-2">
+                      <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} rows={2} className="w-full bg-white dark:bg-slate-700 border-0 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-right text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none" placeholder="הוסף הערה..." />
+                      <button onClick={handleSaveClientNote} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm transition-colors active:scale-95">שמור הערה</button>
                     </div>
                   ) : (
-                    <p className="text-sm text-amber-900">{detailClientNotes || 'אין הערות'}</p>
+                    <div className="px-4 pb-3">
+                      <p className="text-sm text-amber-900 dark:text-amber-200">{detailClientNotes || 'אין הערות'}</p>
+                    </div>
                   )}
                 </div>
               )}
 
               {/* Status Actions */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
+              <div className="space-y-2 pt-2">
                 {selectedAppointment.status === 'pending' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'confirmed')} className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">אשר</button>
-                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">דחה</button>
+                  <div className="flex gap-2" style={{ direction: 'ltr' }}>
+                    <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'confirmed')} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-emerald-500/20">
+                      <svg className="w-4 h-4 inline ml-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      אשר תור
+                    </button>
+                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="flex-1 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 text-red-600 dark:text-red-400 font-bold py-3 rounded-2xl text-sm transition-all active:scale-95">דחה</button>
                   </div>
                 )}
                 {selectedAppointment.status === 'confirmed' && (
                   <>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">הושלם</button>
-                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-500 hover:bg-slate-600 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">לא הגיע</button>
+                    <div className="flex gap-2" style={{ direction: 'ltr' }}>
+                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'completed')} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-blue-600/20">הושלם</button>
+                      <button onClick={() => handleUpdateStatus(selectedAppointment._id, 'no_show')} className="flex-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-600 dark:text-slate-300 font-bold py-3 rounded-2xl text-sm transition-all active:scale-95">לא הגיע</button>
                     </div>
-                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-semibold py-2.5 rounded-xl text-sm transition-colors">בטל תור</button>
+                    <button onClick={() => handleCancelAppointment(selectedAppointment._id)} className="w-full bg-red-50 dark:bg-red-900/20 hover:bg-red-100 text-red-500 font-semibold py-3 rounded-2xl text-sm transition-all active:scale-95">בטל תור</button>
                   </>
                 )}
                 {['completed', 'no_show', 'cancelled'].includes(selectedAppointment.status) && (
-                  <div className="p-3 bg-slate-50 rounded-xl text-center text-sm text-slate-500">
-                    {selectedAppointment.status === 'completed' ? 'תור זה הושלם בהצלחה' : selectedAppointment.status === 'no_show' ? 'הלקוח לא הגיע' : 'תור זה בוטל'}
+                  <div className="bg-slate-50 dark:bg-slate-700/30 rounded-2xl p-4 text-center">
+                    <svg className="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <p className="text-sm text-slate-500 font-medium">
+                      {selectedAppointment.status === 'completed' ? 'תור זה הושלם בהצלחה' : selectedAppointment.status === 'no_show' ? 'הלקוח לא הגיע' : 'תור זה בוטל'}
+                    </p>
                   </div>
                 )}
                 {selectedAppointment.isRecurring && selectedAppointment.recurrenceGroupId && (
@@ -826,9 +926,10 @@ const Events = () => {
                         setShowDetailModal(false);
                       } catch (err) { toast.error('שגיאה בביטול תורים חוזרים'); }
                     }}
-                    className="w-full bg-orange-50 hover:bg-orange-100 text-orange-600 font-semibold py-2.5 rounded-xl text-sm transition-colors"
+                    className="w-full bg-orange-50 dark:bg-orange-900/10 hover:bg-orange-100 text-orange-600 dark:text-orange-400 font-semibold py-3 rounded-2xl text-sm transition-all active:scale-95"
                   >
-                    🔄 בטל את כל התורים החוזרים העתידיים
+                    <svg className="w-4 h-4 inline ml-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    בטל את כל התורים החוזרים העתידיים
                   </button>
                 )}
               </div>
@@ -843,7 +944,9 @@ const Events = () => {
           <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 md:p-6 text-white flex justify-between items-center">
               <h2 className="text-xl md:text-2xl font-bold">הוספת תור חדש</h2>
-              <button onClick={() => { setShowAddModal(false); resetForm(); }} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+              <button onClick={() => { setShowAddModal(false); resetForm(); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <form onSubmit={handleAddAppointment} className="overflow-y-auto max-h-[calc(90vh-80px)] p-5 md:p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -874,9 +977,9 @@ const Events = () => {
                   </div>
                 )}
               </div>
-              <div className="flex gap-2 pt-5 mt-5 border-t border-slate-100">
-                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm active:scale-95">{isRecurring ? '🔄 צור תורים חוזרים' : 'הוסף תור'}</button>
-                <button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl transition-all text-sm">ביטול</button>
+              <div className="flex gap-2 pt-5 mt-5 border-t border-slate-100 dark:border-slate-700" style={{ direction: 'ltr' }}>
+                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all text-sm active:scale-95">{isRecurring ? 'צור תורים חוזרים' : 'הוסף תור'}</button>
+                <button type="button" onClick={() => { setShowAddModal(false); resetForm(); }} className="flex-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 font-semibold py-2.5 rounded-xl transition-all text-sm">ביטול</button>
               </div>
             </form>
           </div>
@@ -885,22 +988,121 @@ const Events = () => {
 
       {/* Block Modal */}
       {showBlockModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => { setShowBlockModal(false); resetForm(); }}>
-          <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()} style={{ animation: 'slideUp 0.3s ease-out' }}>
-            <div className="bg-gradient-to-r from-slate-700 to-slate-800 p-5 text-white flex justify-between items-center">
-              <h2 className="text-xl font-bold">חסימת זמן</h2>
-              <button onClick={() => { setShowBlockModal(false); resetForm(); }} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-0 md:p-4" onClick={() => { setShowBlockModal(false); setBlockMode('hours'); setBlockEndDate(''); resetForm(); }}>
+          <div
+            className="bg-white dark:bg-slate-800 rounded-t-[2rem] md:rounded-[2rem] shadow-2xl max-w-md w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: 'modalSlideUp 0.35s cubic-bezier(0.32,0.72,0,1)' }}
+          >
+            {/* Handle (mobile) */}
+            <div className="md:hidden flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-600 rounded-full" />
             </div>
-            <form onSubmit={handleBlockTime} className="p-5 space-y-3">
-              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">תאריך *</label><input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">שעה *</label><input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all outline-none" required /></div>
-              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">משך (דקות)</label><input type="number" name="duration" value={formData.duration || 60} onChange={handleInputChange} min="15" step="15" className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
-              <div className="space-y-1.5"><label className="block text-xs font-semibold text-slate-600 text-right">סיבה</label><input type="text" name="description" value={formData.description} onChange={handleInputChange} placeholder="הפסקה, חופשה..." className="w-full h-11 bg-slate-100 border-0 rounded-xl px-3 text-sm text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none" /></div>
-              <div className="flex gap-2 pt-4 mt-4 border-t border-slate-100">
-                <button type="submit" className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all active:scale-95">חסום זמן</button>
-                <button type="button" onClick={() => { setShowBlockModal(false); resetForm(); }} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-sm transition-all">ביטול</button>
+
+            <div className="px-6 pt-4 md:pt-6 pb-6">
+              {/* Header */}
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">חסימת זמן</h2>
+                <button onClick={() => { setShowBlockModal(false); setBlockMode('hours'); setBlockEndDate(''); resetForm(); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
-            </form>
+
+              {/* Mode Toggle */}
+              <div className="bg-slate-100 dark:bg-slate-700/50 rounded-2xl p-1 flex mb-5">
+                <button
+                  type="button"
+                  onClick={() => setBlockMode('hours')}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${blockMode === 'hours' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    חסימת שעות
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBlockMode('dates')}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all ${blockMode === 'dates' ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    חסימת ימים
+                  </div>
+                </button>
+              </div>
+
+              <form onSubmit={handleBlockTime} className="space-y-4">
+                {blockMode === 'hours' ? (
+                  <>
+                    {/* Hours mode */}
+                    <div className="bg-slate-50 dark:bg-slate-700/30 rounded-2xl overflow-hidden">
+                      <div className="px-4 pt-3 pb-1">
+                        <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">תאריך *</label>
+                        <input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium focus:ring-0 focus:outline-none p-0" required />
+                      </div>
+                      <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/40" />
+                      <div className="px-4 py-3">
+                        <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">שעה *</label>
+                        <input type="time" name="startTime" value={formData.startTime} onChange={handleInputChange} className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium focus:ring-0 focus:outline-none p-0" required />
+                      </div>
+                      <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/40" />
+                      <div className="px-4 py-3">
+                        <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">משך (דקות)</label>
+                        <input type="number" name="duration" value={formData.duration || 60} onChange={handleInputChange} min="15" step="15" className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium text-right focus:ring-0 focus:outline-none p-0" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Dates mode */}
+                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl p-3.5 mb-1">
+                      <div className="flex items-start gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <svg className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed text-right">חסימת ימים מלאים - כל הימים בטווח שנבחר ייחסמו לתורים חדשים</p>
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-700/30 rounded-2xl overflow-hidden">
+                      <div className="px-4 pt-3 pb-1">
+                        <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">מתאריך *</label>
+                        <input type="date" name="date" value={formData.date} onChange={handleInputChange} min={new Date().toISOString().split('T')[0]} className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium focus:ring-0 focus:outline-none p-0" required />
+                      </div>
+                      <div className="mx-4 border-t border-slate-200/60 dark:border-slate-600/40" />
+                      <div className="px-4 py-3">
+                        <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">עד תאריך *</label>
+                        <input type="date" value={blockEndDate} onChange={(e) => setBlockEndDate(e.target.value)} min={formData.date || new Date().toISOString().split('T')[0]} className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium focus:ring-0 focus:outline-none p-0" required />
+                      </div>
+                    </div>
+                    {formData.date && blockEndDate && blockEndDate >= formData.date && (
+                      <div className="text-center">
+                        <span className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 text-sm font-semibold px-4 py-2 rounded-xl">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          {Math.round((new Date(blockEndDate) - new Date(formData.date)) / 86400000) + 1} ימים ייחסמו
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Description - shared */}
+                <div className="bg-slate-50 dark:bg-slate-700/30 rounded-2xl px-4 py-3">
+                  <label className="block text-[11px] font-semibold text-slate-400 text-right mb-0.5">סיבה</label>
+                  <input type="text" name="description" value={formData.description} onChange={handleInputChange} placeholder="הפסקה, חופשה, מילואים..." className="w-full bg-transparent border-0 text-slate-900 dark:text-white text-base font-medium text-right placeholder:text-slate-300 focus:ring-0 focus:outline-none p-0" />
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-3 pt-2" style={{ direction: 'ltr' }}>
+                  <button type="submit" className="flex-1 bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-slate-800/20 transition-all active:scale-[0.98] text-base">
+                    {blockMode === 'dates' ? 'חסום ימים' : 'חסום זמן'}
+                  </button>
+                  <button type="button" onClick={() => { setShowBlockModal(false); setBlockMode('hours'); setBlockEndDate(''); resetForm(); }} className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold py-3.5 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-base">
+                    ביטול
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -909,6 +1111,16 @@ const Events = () => {
         @keyframes slideUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
+        }
+        @keyframes modalSlideUp {
+          from { transform: translateY(100%); opacity: 0.8; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        @media (min-width: 768px) {
+          @keyframes modalSlideUp {
+            from { transform: scale(0.92) translateY(20px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+          }
         }
       `}</style>
     </div>
@@ -930,7 +1142,9 @@ function InlineDayDetails({ data, staffList, appointmentTypes, clientTagsMap, ge
             {data.appointments.length > 0 ? `${data.appointments.length} תור${data.appointments.length > 1 ? 'ים' : ''}` : 'אין תורים'}
           </p>
         </div>
-        <button onClick={onClose} className="text-white/60 hover:text-white text-xl leading-none">x</button>
+        <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
       </div>
 
       <div className="p-3 space-y-2.5">
@@ -1007,7 +1221,9 @@ function DayDetailsModal({ data, staffList, appointmentTypes, clientTagsMap, get
               {data.appointments.length > 0 ? `${data.appointments.length} תור${data.appointments.length > 1 ? 'ים' : ''}` : 'אין תורים'}
             </p>
           </div>
-          <button onClick={onClose} className="text-white/60 hover:text-white text-2xl leading-none">x</button>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         </div>
 
         <div className="overflow-y-auto max-h-[calc(80vh-100px)] p-5 space-y-3">

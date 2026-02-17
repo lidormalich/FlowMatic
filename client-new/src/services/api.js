@@ -94,6 +94,10 @@ export const appointmentsApi = {
   cancelBooking: async (id) => {
     const response = await api.post(`/appointments/${id}/cancel`);
     return response.data;
+  },
+  blockRange: async (data) => {
+    const response = await api.post('/appointments/block-range', data);
+    return response.data;
   }
 };
 
@@ -146,6 +150,14 @@ export const clientsApi = {
   },
   update: async (id, data) => {
     const response = await api.put(`/clients/${id}`, data);
+    return response.data;
+  },
+  importCSV: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/clients/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
     return response.data;
   }
 };

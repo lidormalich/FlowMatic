@@ -43,6 +43,17 @@ export const useAppointments = () => {
     }
   });
 
+  const blockRangeMutation = useMutation({
+    mutationFn: appointmentsApi.blockRange,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      toast.success(data.message || 'הימים נחסמו בהצלחה!');
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || 'שגיאה בחסימת ימים');
+    }
+  });
+
   return {
     appointments: appointments || [],
     isLoading,
@@ -50,8 +61,10 @@ export const useAppointments = () => {
     createAppointment: createMutation.mutate,
     updateAppointment: updateMutation.mutate,
     cancelAppointment: cancelMutation.mutate,
+    blockRange: blockRangeMutation.mutate,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
-    isCancelling: cancelMutation.isPending
+    isCancelling: cancelMutation.isPending,
+    isBlockingRange: blockRangeMutation.isPending
   };
 };

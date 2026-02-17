@@ -6,6 +6,7 @@ import moment from 'moment';
 import 'moment/locale/he';
 import SkeletonLoader from '../common/SkeletonLoader';
 import { formatHebrewDate } from '../../utils/hebrewDate';
+import { fetchHebcalData, getCachedMonth, setCachedMonth } from '../../services/hebcal';
 import { useAuth } from '../../hooks/useAuth';
 import './PublicBooking.css';
 
@@ -41,18 +42,53 @@ const PublicBooking = () => {
   });
 
   const [hebrewDate, setHebrewDate] = useState('');
+  const [hebcalEvents, setHebcalEvents] = useState({});
+
+  const showHebrewInBooking = businessOwner?.showHebrewDateInBooking || businessOwner?.showHebrewDate || false;
+  const hebCalSettings = businessOwner?.hebrewCalendar || { showHolidays: true, showShabbat: true, showEvents: true };
 
   useEffect(() => {
     fetchBusinessOwner();
   }, [username]);
 
   useEffect(() => {
-    if (formData.date && businessOwner?.showHebrewDate) {
+    if (formData.date && showHebrewInBooking) {
       setHebrewDate(formatHebrewDate(new Date(formData.date)));
     } else {
       setHebrewDate('');
     }
-  }, [formData.date, businessOwner?.showHebrewDate]);
+  }, [formData.date, showHebrewInBooking]);
+
+  // Fetch Hebcal data for calendar
+  useEffect(() => {
+    if (!showHebrewInBooking) return;
+    const loadHebcal = async () => {
+      try {
+        const y = currentMonth.year();
+        const m = currentMonth.month();
+        const cacheKey = `${y}-${m}`;
+        let data = getCachedMonth(cacheKey);
+        if (!data) {
+          data = await fetchHebcalData(y, m);
+          setCachedMonth(cacheKey, data);
+        }
+        const grouped = {};
+        data.forEach(event => {
+          const dateKey = event.date.split('T')[0];
+          if (!grouped[dateKey]) grouped[dateKey] = { holidays: [], shabbat: null };
+          if (event.category === 'holiday' && (hebCalSettings.showHolidays || hebCalSettings.showEvents)) {
+            grouped[dateKey].holidays.push(event.hebrew);
+          } else if ((event.category === 'candles' || event.category === 'havdalah') && hebCalSettings.showShabbat) {
+            grouped[dateKey].shabbat = event.time || event.hebrew;
+          }
+        });
+        setHebcalEvents(grouped);
+      } catch (err) {
+        console.error('Failed to load Hebcal data for booking:', err);
+      }
+    };
+    loadHebcal();
+  }, [currentMonth, showHebrewInBooking, hebCalSettings.showHolidays, hebCalSettings.showShabbat, hebCalSettings.showEvents]);
 
   useEffect(() => {
     if (formData.date && businessOwner && selectedType && showTimesModal) {
@@ -509,15 +545,30 @@ const PublicBooking = () => {
                 </div>
 
                 <div className="calendar-grid">
-                  {renderCalendar().map((day, idx) => (
-                    <div
-                      key={idx}
-                      className={`calendar-day ${day.isPadding ? 'padding' : ''} ${!day.isPadding && isSelected(day.date) ? 'selected' : ''} ${!day.isPadding && isToday(day.date) ? 'today' : ''} ${!day.isPadding && isPast(day.date) ? 'disabled' : ''}`}
-                      onClick={() => !day.isPadding && !isPast(day.date) && handleDateSelect(day.date)}
-                    >
-                      {day.isPadding ? '' : day.date.date()}
-                    </div>
-                  ))}
+                  {renderCalendar().map((day, idx) => {
+                    const dateKey = !day.isPadding ? day.date.format('YYYY-MM-DD') : '';
+                    const dayHebcal = dateKey ? hebcalEvents[dateKey] : null;
+                    const hasHoliday = dayHebcal?.holidays?.length > 0;
+                    return (
+                      <div
+                        key={idx}
+                        className={`calendar-day ${day.isPadding ? 'padding' : ''} ${!day.isPadding && isSelected(day.date) ? 'selected' : ''} ${!day.isPadding && isToday(day.date) ? 'today' : ''} ${!day.isPadding && isPast(day.date) ? 'disabled' : ''}`}
+                        onClick={() => !day.isPadding && !isPast(day.date) && handleDateSelect(day.date)}
+                        title={hasHoliday ? dayHebcal.holidays.join(', ') : ''}
+                      >
+                        {!day.isPadding && (
+                          <>
+                            <span>{day.date.date()}</span>
+                            {showHebrewInBooking && (
+                              <span style={{ display: 'block', fontSize: '0.55rem', lineHeight: 1, color: hasHoliday ? '#ea580c' : '#94a3b8', marginTop: '1px', fontWeight: hasHoliday ? 600 : 400 }}>
+                                {hasHoliday ? dayHebcal.holidays[0].substring(0, 8) : formatHebrewDate(day.date.toDate()).split(' ')[0]}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -539,60 +590,101 @@ const PublicBooking = () => {
 
           {/* Step 3: Customer Details */}
           {step === 3 && (
-            <div>
-              <h3 className="section-header">פרטים אחרונים</h3>
-              <div className="glass-input-group">
-                <div className="glass-field">
-                  <label className="glass-label">שם מלא</label>
-                  <input
-                    type="text"
-                    name="customerName"
-                    className="glass-input"
-                    placeholder="הכנס שם מלא"
-                    value={formData.customerName}
-                    onChange={handleInputChange}
-                  />
+            <div className="step3-container">
+              {/* Booking Summary Card - Top */}
+              <div className="step3-summary">
+                <div className="step3-summary-header">
+                  <div className="step3-summary-icon">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <div className="step3-summary-info">
+                    <span className="step3-summary-service">{selectedType?.name}</span>
+                    {additionalServices.length > 0 && (
+                      <span className="step3-summary-extras">+ {additionalServices.map(s => s.name).join(', ')}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="glass-field">
-                  <label className="glass-label">טלפון</label>
-                  <input
-                    type="tel"
-                    name="customerPhone"
-                    className="glass-input"
-                    dir="ltr"
-                    style={{ textAlign: 'left' }}
-                    placeholder="05X-XXXXXXX"
-                    value={formData.customerPhone}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                <div className="glass-field">
-                  <label className="glass-label">אימייל (אופציונלי)</label>
-                  <input
-                    type="email"
-                    name="customerEmail"
-                    className="glass-input"
-                    dir="ltr"
-                    style={{ textAlign: 'left' }}
-                    placeholder="name@example.com"
-                    value={formData.customerEmail}
-                    onChange={handleInputChange}
-                  />
+                <div className="step3-summary-details">
+                  <div className="step3-summary-row">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <span>{moment(formData.date).format('dddd, D בMMMM YYYY')}</span>
+                  </div>
+                  <div className="step3-summary-row">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <span>{formData.time} • {getTotalDuration()} דקות</span>
+                  </div>
+                  {hebrewDate && (
+                    <div className="step3-summary-row">
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
+                      <span>{hebrewDate}</span>
+                    </div>
+                  )}
+                  <div className="step3-summary-price">
+                    ₪{getTotalPrice()}
+                  </div>
                 </div>
               </div>
 
-              {/* Booking Summary */}
-              <div className="summary-card">
-                <p className="summary-card-title">{selectedType?.name}</p>
-                {additionalServices.length > 0 && (
-                  <div style={{ fontSize: '0.85rem', color: '#6366f1', marginBottom: '0.25rem' }}>
-                    + {additionalServices.map(s => s.name).join(', ')}
+              {/* Form Section */}
+              <div className="step3-form-section">
+                <h3 className="step3-form-title">פרטי הלקוח</h3>
+                <div className="step3-form-group">
+                  <div className="step3-field">
+                    <div className="step3-field-icon">
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    </div>
+                    <div className="step3-field-content">
+                      <label className="step3-label">שם מלא</label>
+                      <input
+                        type="text"
+                        name="customerName"
+                        className="step3-input"
+                        placeholder="הכנס שם מלא"
+                        value={formData.customerName}
+                        onChange={handleInputChange}
+                      />
+                    </div>
                   </div>
-                )}
-                <div className="summary-card-detail">
-                  <p>{moment(formData.date).format('dddd, D בMMMM YYYY')} • {formData.time}</p>
-                  {hebrewDate && <p>{hebrewDate}</p>}
-                  <p>{getTotalDuration()} דקות • ₪{getTotalPrice()}</p>
+                  <div className="step3-divider" />
+                  <div className="step3-field">
+                    <div className="step3-field-icon">
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                    </div>
+                    <div className="step3-field-content">
+                      <label className="step3-label">טלפון</label>
+                      <input
+                        type="tel"
+                        name="customerPhone"
+                        className="step3-input"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                        placeholder="05X-XXXXXXX"
+                        value={formData.customerPhone}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                  </div>
+                  <div className="step3-divider" />
+                  <div className="step3-field">
+                    <div className="step3-field-icon">
+                      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    </div>
+                    <div className="step3-field-content">
+                      <label className="step3-label">אימייל <span className="step3-optional">(אופציונלי)</span></label>
+                      <input
+                        type="email"
+                        name="customerEmail"
+                        className="step3-input"
+                        dir="ltr"
+                        style={{ textAlign: 'left' }}
+                        placeholder="name@example.com"
+                        value={formData.customerEmail}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -644,7 +736,7 @@ const PublicBooking = () => {
 
         {/* Navigation Footer - Fixed bottom */}
         {step >= 2 && step < 4 && (
-          <div className="nav-footer">
+          <div className="nav-footer" style={{ direction: 'ltr' }}>
             <button
               className="btn-primary-glass"
               disabled={
