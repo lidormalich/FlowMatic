@@ -61,9 +61,8 @@ const ClientSchema = new Schema({
 ClientSchema.index({ businessOwnerId: 1, phone: 1 }, { unique: true });
 
 // Update the updatedAt timestamp before saving
-ClientSchema.pre('save', function(next) {
+ClientSchema.pre('save', function() {
     this.updatedAt = Date.now();
-    next();
 });
 
 ClientSchema.virtual('id').get(function(){
