@@ -46,9 +46,6 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
 
     // Harden business hours defaults
     const bh = owner.businessHours || {};
-    const startHour = typeof bh.startHour === 'number' ? bh.startHour : 9;
-    const endHour = typeof bh.endHour === 'number' ? bh.endHour : 17;
-    const workingDays = Array.isArray(bh.workingDays) ? bh.workingDays : [0, 1, 2, 3, 4, 5];
     const slotInterval = typeof bh.slotInterval === 'number' && bh.slotInterval > 0 ? bh.slotInterval : 30;
     const breakTime = bh.breakTime || { enabled: false };
 
@@ -56,21 +53,40 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
     const slotDuration = parseInt(duration) || 30;
     if (slotDuration <= 0) return [];
 
-    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} | Interval: ${slotInterval} ---`);
-    console.log(`Config: ${startHour}:00 - ${endHour}:00 | Days: [${workingDays}]`);
-    if (breakTime.enabled) {
-      console.log(`Break: ${breakTime.startHour}:${String(breakTime.startMinute || 0).padStart(2, '0')} - ${breakTime.endHour}:${String(breakTime.endMinute || 0).padStart(2, '0')}`);
-    }
-
     const requestedDate = moment(date).startOf('day');
     const dayOfWeek = requestedDate.day();
-    
-    // Convert to numbers for safety
-    const numericWorkingDays = workingDays.map(d => parseInt(d));
 
-    if (!numericWorkingDays.includes(dayOfWeek)) {
+    // Determine if this day is working and its hours (per-day or fallback to global)
+    const daySchedules = bh.daySchedules || null;
+    const dayConfig = daySchedules?.[dayOfWeek];
+
+    let isWorkingDay = false;
+    let startHour = 9;
+    let endHour = 17;
+
+    if (dayConfig && dayConfig.enabled !== undefined) {
+      // Use per-day schedule
+      isWorkingDay = dayConfig.enabled;
+      startHour = typeof dayConfig.startHour === 'number' ? dayConfig.startHour : 9;
+      endHour = typeof dayConfig.endHour === 'number' ? dayConfig.endHour : 17;
+    } else {
+      // Fallback to global hours + workingDays
+      const workingDays = Array.isArray(bh.workingDays) ? bh.workingDays : [0, 1, 2, 3, 4, 5];
+      const numericWorkingDays = workingDays.map(d => parseInt(d));
+      isWorkingDay = numericWorkingDays.includes(dayOfWeek);
+      startHour = typeof bh.startHour === 'number' ? bh.startHour : 9;
+      endHour = typeof bh.endHour === 'number' ? bh.endHour : 17;
+    }
+
+    if (!isWorkingDay) {
       console.log(`[AVAILABILITY] FAILED: Day ${dayOfWeek} is not a working day.`);
       return [];
+    }
+
+    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} | Interval: ${slotInterval} ---`);
+    console.log(`Config: ${startHour}:00 - ${endHour}:00 | Day ${dayOfWeek} enabled`);
+    if (breakTime.enabled) {
+      console.log(`Break: ${breakTime.startHour}:${String(breakTime.startMinute || 0).padStart(2, '0')} - ${breakTime.endHour}:${String(breakTime.endMinute || 0).padStart(2, '0')}`);
     }
 
     // Get existing appointments for the SPECIFIC day

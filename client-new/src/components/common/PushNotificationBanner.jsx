@@ -49,7 +49,11 @@ const PushNotificationBanner = () => {
             }
         }
 
-        const timer = setTimeout(() => setShow(true), 1000);
+        const timer = setTimeout(() => {
+            setShow(true);
+            // Save shown timestamp so it only appears once per 24h even if not dismissed
+            localStorage.setItem('pushBannerDismissed', Date.now().toString());
+        }, 1000);
         return () => clearTimeout(timer);
     }, [isSupported, isSubscribed, permission, dismissed, location.pathname]);
 

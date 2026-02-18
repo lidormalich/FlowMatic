@@ -36,7 +36,16 @@ const BusinessSettings = () => {
                 endHour: 13,
                 endMinute: 0
             },
-            minGapMinutes: 0
+            minGapMinutes: 0,
+            daySchedules: {
+                0: { enabled: false, startHour: 9, endHour: 17 }, // ראשון
+                1: { enabled: true, startHour: 9, endHour: 17 },  // שני
+                2: { enabled: true, startHour: 9, endHour: 17 },  // שלישי
+                3: { enabled: true, startHour: 9, endHour: 17 },  // רביעי
+                4: { enabled: true, startHour: 9, endHour: 17 },  // חמישי
+                5: { enabled: false, startHour: 9, endHour: 17 }, // שישי
+                6: { enabled: false, startHour: 9, endHour: 17 }   // שבת
+            }
         },
         showHebrewDate: false,
         showHebrewDateInBooking: false,
@@ -86,7 +95,16 @@ const BusinessSettings = () => {
                         endHour: userData.businessHours?.breakTime?.endHour ?? 13,
                         endMinute: userData.businessHours?.breakTime?.endMinute ?? 0
                     },
-                    minGapMinutes: userData.businessHours?.minGapMinutes ?? 0
+                    minGapMinutes: userData.businessHours?.minGapMinutes ?? 0,
+                    daySchedules: userData.businessHours?.daySchedules || {
+                        0: { enabled: false, startHour: 9, endHour: 17 },
+                        1: { enabled: true, startHour: 9, endHour: 17 },
+                        2: { enabled: true, startHour: 9, endHour: 17 },
+                        3: { enabled: true, startHour: 9, endHour: 17 },
+                        4: { enabled: true, startHour: 9, endHour: 17 },
+                        5: { enabled: false, startHour: 9, endHour: 17 },
+                        6: { enabled: false, startHour: 9, endHour: 17 }
+                    }
                 },
                 showHebrewDate: userData.showHebrewDate ?? false,
                 showHebrewDateInBooking: userData.showHebrewDateInBooking ?? false,
@@ -120,7 +138,30 @@ const BusinessSettings = () => {
     const handleSave = async () => {
         setSaving(true);
         try {
-            await api.put(`/users/${user.id}`, formData);
+            const dataToSave = { ...formData };
+
+            // Derive workingDays and global hours from daySchedules for backward compatibility
+            if (dataToSave.businessHours.daySchedules) {
+                const workingDays = [];
+                let minStart = 23, maxEnd = 0;
+
+                for (let day = 0; day < 7; day++) {
+                    const dayConfig = dataToSave.businessHours.daySchedules[day];
+                    if (dayConfig?.enabled) {
+                        workingDays.push(day);
+                        const start = dayConfig.startHour ?? 9;
+                        const end = dayConfig.endHour ?? 17;
+                        minStart = Math.min(minStart, start);
+                        maxEnd = Math.max(maxEnd, end);
+                    }
+                }
+
+                dataToSave.businessHours.workingDays = workingDays;
+                dataToSave.businessHours.startHour = minStart === 23 ? 9 : minStart;
+                dataToSave.businessHours.endHour = maxEnd === 0 ? 17 : maxEnd;
+            }
+
+            await api.put(`/users/${user.id}`, dataToSave);
             toast.success('ההגדרות נשמרו בהצלחה');
             if (refreshUser) refreshUser();
         } catch (error) {
@@ -276,48 +317,128 @@ const BusinessSettings = () => {
             {/* Working Hours Tab */}
             {activeTab === 'hours' && (
                 <div className="space-y-4">
-                    {/* Open/Close Hours */}
-                    <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] p-5">
-                        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 text-right">שעות פעילות</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 text-right">שעת פתיחה</label>
-                                <select value={formData.businessHours.startHour} onChange={(e) => handleNestedChange('businessHours', 'startHour', parseInt(e.target.value))} className="w-full h-12 bg-slate-100 dark:bg-slate-700 border-0 rounded-2xl px-4 text-slate-900 dark:text-white text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
-                                    {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 text-right">שעת סגירה</label>
-                                <select value={formData.businessHours.endHour} onChange={(e) => handleNestedChange('businessHours', 'endHour', parseInt(e.target.value))} className="w-full h-12 bg-slate-100 dark:bg-slate-700 border-0 rounded-2xl px-4 text-slate-900 dark:text-white text-right focus:ring-2 focus:ring-blue-500 transition-all outline-none appearance-none">
-                                    {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
+                    {/* Per-Day Schedule */}
+                    <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
+                        <div className="p-5">
+                            <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 text-right">ימי פעילות ושעות</h3>
 
-                    {/* Working Days */}
-                    <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] p-5">
-                        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 text-right">ימי פעילות</h3>
-                        <div className="grid grid-cols-7 gap-2">
-                            {DAYS_OF_WEEK.map(day => {
-                                const isActive = formData.businessHours.workingDays.includes(day.value);
-                                return (
+                            {/* Quick Fill Buttons */}
+                            <div className="mb-5 pb-5 border-b border-slate-100 dark:border-slate-700/50">
+                                <p className="text-[10px] font-semibold text-slate-400 mb-2 text-right">מילוי מהיר:</p>
+                                <div className="flex gap-2 flex-wrap justify-end">
                                     <button
-                                        key={day.value}
                                         type="button"
-                                        onClick={() => toggleWorkingDay(day.value)}
-                                        className={`relative flex flex-col items-center justify-center py-3 rounded-xl transition-all duration-200 active:scale-95 ${isActive
-                                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                                            : 'bg-slate-100 dark:bg-slate-700/50 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
-                                        }`}
+                                        onClick={() => {
+                                            const newSchedules = {
+                                                0: { enabled: true, startHour: 9, endHour: 18 },
+                                                1: { enabled: true, startHour: 9, endHour: 18 },
+                                                2: { enabled: true, startHour: 9, endHour: 18 },
+                                                3: { enabled: true, startHour: 9, endHour: 18 },
+                                                4: { enabled: true, startHour: 9, endHour: 18 },
+                                                5: { enabled: false, startHour: 9, endHour: 18 },
+                                                6: { enabled: false, startHour: 9, endHour: 18 }
+                                            };
+                                            setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                        }}
+                                        className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-semibold hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors active:scale-95"
                                     >
-                                        <span className="text-lg font-bold">{day.label}</span>
-                                        <span className="text-[9px] mt-0.5 opacity-70">{day.fullLabel}</span>
+                                        א׳-ה׳ 09-18
                                     </button>
-                                );
-                            })}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newSchedules = {
+                                                0: { enabled: true, startHour: 9, endHour: 18 },
+                                                1: { enabled: true, startHour: 9, endHour: 18 },
+                                                2: { enabled: true, startHour: 9, endHour: 18 },
+                                                3: { enabled: true, startHour: 9, endHour: 18 },
+                                                4: { enabled: true, startHour: 9, endHour: 18 },
+                                                5: { enabled: true, startHour: 9, endHour: 14 },
+                                                6: { enabled: false, startHour: 9, endHour: 18 }
+                                            };
+                                            setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                        }}
+                                        className="px-3 py-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg text-xs font-semibold hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors active:scale-95"
+                                    >
+                                        א׳-ו׳ 09-18/14
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newSchedules = {
+                                                0: { enabled: false, startHour: 9, endHour: 18 },
+                                                1: { enabled: false, startHour: 9, endHour: 18 },
+                                                2: { enabled: false, startHour: 9, endHour: 18 },
+                                                3: { enabled: false, startHour: 9, endHour: 18 },
+                                                4: { enabled: false, startHour: 9, endHour: 18 },
+                                                5: { enabled: false, startHour: 9, endHour: 18 },
+                                                6: { enabled: false, startHour: 9, endHour: 18 }
+                                            };
+                                            setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                        }}
+                                        className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors active:scale-95"
+                                    >
+                                        נקה הכל
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Day Rows */}
+                            <div className="space-y-0">
+                                {DAYS_OF_WEEK.map((day) => {
+                                    const dayConfig = formData.businessHours.daySchedules[day.value];
+                                    const isEnabled = dayConfig?.enabled ?? false;
+                                    return (
+                                        <div
+                                            key={day.value}
+                                            className={`flex items-center gap-3 py-3.5 px-4 border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 transition-all ${isEnabled ? 'bg-blue-50/30 dark:bg-blue-950/20' : 'opacity-50'}`}
+                                        >
+                                            <Toggle
+                                                checked={isEnabled}
+                                                onChange={(v) => {
+                                                    const newSchedules = { ...formData.businessHours.daySchedules };
+                                                    newSchedules[day.value] = { ...newSchedules[day.value], enabled: v };
+                                                    setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                                }}
+                                                color="blue"
+                                            />
+                                            <div className="flex-1 flex items-center gap-2 justify-end" dir="ltr">
+                                                {isEnabled && (
+                                                    <>
+                                                        <select
+                                                            value={dayConfig?.endHour ?? 17}
+                                                            onChange={(e) => {
+                                                                const newSchedules = { ...formData.businessHours.daySchedules };
+                                                                newSchedules[day.value] = { ...newSchedules[day.value], endHour: parseInt(e.target.value) };
+                                                                setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                                            }}
+                                                            className="h-10 w-20 bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-2 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                                        >
+                                                            {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>)}
+                                                        </select>
+                                                        <span className="text-slate-500 dark:text-slate-400 text-sm">−</span>
+                                                        <select
+                                                            value={dayConfig?.startHour ?? 9}
+                                                            onChange={(e) => {
+                                                                const newSchedules = { ...formData.businessHours.daySchedules };
+                                                                newSchedules[day.value] = { ...newSchedules[day.value], startHour: parseInt(e.target.value) };
+                                                                setFormData(prev => ({ ...prev, businessHours: { ...prev.businessHours, daySchedules: newSchedules } }));
+                                                            }}
+                                                            className="h-10 w-20 bg-slate-100 dark:bg-slate-700 border-0 rounded-lg px-2 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                                        >
+                                                            {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2, '0')}:00</option>)}
+                                                        </select>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="text-right min-w-[60px]">
+                                                <span className="text-sm font-semibold text-slate-900 dark:text-white">{day.fullLabel}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-3 text-center">{formData.businessHours.workingDays.length} ימים נבחרו</p>
                     </div>
 
                     {/* Slot Interval */}

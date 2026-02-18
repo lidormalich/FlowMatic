@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '../../services/api';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 import moment from 'moment';
 import 'moment/locale/he';
 
@@ -18,6 +19,7 @@ const NotificationBell = () => {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const dropdownRef = useRef(null);
   const queryClient = useQueryClient();
+  const { isSupported: pushSupported, permission: pushPermission, isSubscribed: pushSubscribed, loading: pushLoading, subscribe: pushSubscribe } = usePushNotifications();
 
   const { data: unreadData } = useQuery({
     queryKey: ['notifications-unread'],
@@ -129,6 +131,37 @@ const NotificationBell = () => {
                 </button>
               )}
             </div>
+
+            {/* Enable Push Notifications Banner */}
+            {pushSupported && !pushSubscribed && pushPermission !== 'denied' && (
+              <div className="mx-4 mt-3 mb-2 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200/60 dark:border-blue-700/40 rounded-2xl p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20 flex-shrink-0">
+                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-slate-800 dark:text-white">התראות לא מופעלות</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">הפעל כדי לקבל תזכורות ועדכונים</p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => { await pushSubscribe(); }}
+                  disabled={pushLoading}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[13px] font-bold rounded-xl shadow-md shadow-blue-500/25 transition-all duration-200 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {pushLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      מפעיל...
+                    </>
+                  ) : (
+                    'הפעל התראות'
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Notifications List */}
             <div className="overflow-y-auto max-h-[420px] overscroll-contain" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
