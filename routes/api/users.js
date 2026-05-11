@@ -3,11 +3,23 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const passport = require('passport');
+const multer = require('multer');
+const { Readable } = require('stream');
 const keys = require('../../config/keys');
 const validateRegisterInput = require('../../validation/register');
 const validateLoginInput = require('../../validation/login');
 const validateUpdateUserInput = require('../../validation/updateUser');
 const User = require('../../models/User');
+const cloudinary = require('../../utils/cloudinary');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('קובץ לא תקין — יש להעלות תמונה בלבד'));
+  }
+});
 
 // @route   GET api/users
 // @desc    Get all users (admin only)
@@ -43,6 +55,53 @@ router.get('/profile', passport.authenticate('jwt', { session: false }), async (
     }
 });
 
+
+// @route   PUT api/users/onboarding
+// @desc    Complete onboarding — saves business info + services, marks isOnboarded=true
+// @access  Private
+router.put('/onboarding', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const AppointmentType = require('../../models/AppointmentType');
+        const user = await User.findById(req.user.id);
+        if (!user) return res.status(404).json({ message: 'משתמש לא נמצא' });
+
+        const { businessName, businessType, phoneNumber, businessHours, services } = req.body;
+
+        if (businessName) user.businessName = businessName;
+        if (businessType) user.businessType = businessType;
+        if (phoneNumber) user.phoneNumber = phoneNumber;
+        if (businessHours) {
+            user.businessHours = {
+                ...user.businessHours.toObject ? user.businessHours.toObject() : user.businessHours,
+                ...businessHours
+            };
+        }
+        user.isOnboarded = true;
+        await user.save();
+
+        if (Array.isArray(services) && services.length > 0) {
+            const validServices = services.filter(s => s.name && s.name.trim());
+            if (validServices.length > 0) {
+                await AppointmentType.insertMany(
+                    validServices.map(s => ({
+                        userId: user._id,
+                        name: s.name.trim(),
+                        duration: s.duration || 60,
+                        price: s.price || 0,
+                        color: '#667eea',
+                        isActive: true
+                    }))
+                );
+            }
+        }
+
+        const updatedUser = await User.findById(req.user.id).select('-password');
+        res.json(updatedUser);
+    } catch (err) {
+        console.error('Onboarding error:', err);
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
 
 // @route   GET api/users/:id
 // @desc    Get single user
@@ -532,6 +591,37 @@ router.get('/public/:username', (req, res) => {
         console.log(err);
         res.status(500).json({ message: 'שגיאת שרת' });
     });
+});
+
+// @route   POST api/users/upload-profile-image
+// @desc    Upload business logo to Cloudinary
+// @access  Private
+router.post('/upload-profile-image', passport.authenticate('jwt', { session: false }), upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'לא נבחר קובץ' });
+
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'flowmatic',
+          public_id: `logo_${req.user.id}`,
+          overwrite: true,
+          resource_type: 'image',
+          transformation: [{ width: 400, height: 400, crop: 'limit' }]
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      Readable.from(req.file.buffer).pipe(stream);
+    });
+
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ message: 'שגיאה בהעלאת התמונה' });
+  }
 });
 
 module.exports = router;

@@ -59,6 +59,8 @@ const UserSchema = new Schema({
             endMinute: { type: Number, default: 0 }
         },
         minGapMinutes: { type: Number, default: 0 },
+        bufferMinutes: { type: Number, default: 0 },
+        flexibleSlots: { type: Boolean, default: false },
         daySchedules: { type: mongoose.Schema.Types.Mixed, default: null } // Per-day hours: { 0: {enabled, startHour, endHour}, ..., 6: {...} }
     },
     phoneNumber: {
@@ -99,6 +101,14 @@ const UserSchema = new Schema({
     businessAddress: {
         type: String,
         default: ''
+    },
+    businessType: {
+        type: String,
+        default: ''
+    },
+    isOnboarded: {
+        type: Boolean,
+        default: false
     },
     date: {
         type: Date,

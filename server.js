@@ -1,3 +1,7 @@
+require('dotenv').config();
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 const express = require('express');
 const path = require('path');
 const mongoose = require('mongoose');
@@ -16,7 +20,6 @@ const templates = require('./routes/api/templates');
 const waitlist = require('./routes/api/waitlist');
 const inventory = require('./routes/api/inventory');
 const notifications = require('./routes/api/notifications');
-require('dotenv').config();
 
 require('./config/passport')(passport);
 
@@ -50,7 +53,12 @@ app.use(bodyParser.json());
 // const db = require('./config/keys').mongoURI;
 const db = require('./config/keys').mongoURI;
 mongoose
-  .connect(db)
+  .connect(db, {
+    serverSelectionTimeoutMS: 30000,
+    socketTimeoutMS: 30000,
+    retryWrites: true,
+    w: 'majority'
+  })
   .then(() => {
     console.log('MongoDB successfully connected.');
 

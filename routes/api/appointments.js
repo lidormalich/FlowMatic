@@ -9,7 +9,6 @@ const AppointmentType = require('../../models/AppointmentType');
 const Client = require('../../models/Client');
 const { sendAppointmentConfirmationSMS, sendAppointmentCancellationSMS } = require('../../services/smsService');
 
-const BUFFER_MINUTES = 5; // מרווח ביטחון בין תורים
 
 // Joi Validation Schema
 const appointmentValidation = Joi.object({
@@ -46,12 +45,16 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
 
     // Harden business hours defaults
     const bh = owner.businessHours || {};
-    const slotInterval = typeof bh.slotInterval === 'number' && bh.slotInterval > 0 ? bh.slotInterval : 30;
+    const bufferMinutes = typeof bh.bufferMinutes === 'number' ? bh.bufferMinutes : 0;
+    const flexibleSlots = bh.flexibleSlots === true;
     const breakTime = bh.breakTime || { enabled: false };
 
     // Ensure duration is valid
     const slotDuration = parseInt(duration) || 30;
     if (slotDuration <= 0) return [];
+
+    // Step = appointment duration (natural grid). Flexible mode checks every 5 min instead.
+    const stepMinutes = flexibleSlots ? 5 : slotDuration;
 
     const requestedDate = moment(date).startOf('day');
     const dayOfWeek = requestedDate.day();
@@ -83,7 +86,7 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
       return [];
     }
 
-    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} | Interval: ${slotInterval} ---`);
+    console.log(`--- [AVAILABILITY] ${owner.username} | Date: ${date} | Dur: ${slotDuration} | Buffer: ${bufferMinutes} | Flexible: ${flexibleSlots} ---`);
     console.log(`Config: ${startHour}:00 - ${endHour}:00 | Day ${dayOfWeek} enabled`);
     if (breakTime.enabled) {
       console.log(`Break: ${breakTime.startHour}:${String(breakTime.startMinute || 0).padStart(2, '0')} - ${breakTime.endHour}:${String(breakTime.endMinute || 0).padStart(2, '0')}`);
@@ -115,9 +118,8 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
 
     // If it's today and we're starting before "now", we can skip ahead
     if (isToday && currentTime.isBefore(now)) {
-      // Round up to the next slot interval after "now"
-      const remainder = now.minute() % slotInterval;
-      currentTime = now.clone().add(remainder === 0 ? 0 : slotInterval - remainder, 'minutes').startOf('minute');
+      const remainder = now.minute() % stepMinutes;
+      currentTime = now.clone().add(remainder === 0 ? 0 : stepMinutes - remainder, 'minutes').startOf('minute');
     }
 
     // Prepare break time boundaries if enabled
@@ -137,23 +139,23 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
       // Skip slots that overlap with break time
       if (breakStart && breakEnd) {
         if (currentTime.isBefore(breakEnd) && slotEndMoment.isAfter(breakStart)) {
-          currentTime.add(slotInterval, 'minutes');
+          currentTime.add(stepMinutes, 'minutes');
           continue;
         }
       }
 
-      // Check overlap with existing appointments
+      // Check overlap with existing appointments (buffer expands the blocked zone on both sides)
       const isAvailable = !appointments.some(apt => {
-        const aptStartMoment = moment(slotStartStr, 'HH:mm');
-        const aptEndMoment = moment(slotStartStr, 'HH:mm').add(slotDuration, 'minutes');
+        const newStart = moment(slotStartStr, 'HH:mm');
+        const newEnd = newStart.clone().add(slotDuration, 'minutes');
 
-        const existingStart = moment(apt.startTime, 'HH:mm').subtract(BUFFER_MINUTES, 'minutes');
-        const existingEnd = moment(apt.endTime, 'HH:mm').add(BUFFER_MINUTES, 'minutes');
+        const blockedStart = moment(apt.startTime, 'HH:mm').subtract(bufferMinutes, 'minutes');
+        const blockedEnd = moment(apt.endTime, 'HH:mm').add(bufferMinutes, 'minutes');
 
         return (
-          (aptStartMoment.isSameOrAfter(existingStart) && aptStartMoment.isBefore(existingEnd)) ||
-          (aptEndMoment.isAfter(existingStart) && aptEndMoment.isSameOrBefore(existingEnd)) ||
-          (aptStartMoment.isSameOrBefore(existingStart) && aptEndMoment.isSameOrAfter(existingEnd))
+          (newStart.isSameOrAfter(blockedStart) && newStart.isBefore(blockedEnd)) ||
+          (newEnd.isAfter(blockedStart) && newEnd.isSameOrBefore(blockedEnd)) ||
+          (newStart.isSameOrBefore(blockedStart) && newEnd.isSameOrAfter(blockedEnd))
         );
       });
 
@@ -161,7 +163,7 @@ async function calculateAvailableSlots(businessOwnerId, date, duration, staffId)
         slots.push(slotStartStr);
       }
 
-      currentTime.add(slotInterval, 'minutes');
+      currentTime.add(stepMinutes, 'minutes');
     }
 
     // Smart Gap Control: filter out slots that leave gaps smaller than minGapMinutes

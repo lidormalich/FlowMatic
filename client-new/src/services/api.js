@@ -91,8 +91,8 @@ export const appointmentsApi = {
     const response = await api.get('/appointments/my-bookings');
     return response.data;
   },
-  cancelBooking: async (id) => {
-    const response = await api.post(`/appointments/${id}/cancel`);
+  cancelBooking: async (id, customerPhone) => {
+    const response = await api.post(`/appointments/${id}/cancel`, { customerPhone });
     return response.data;
   },
   blockRange: async (data) => {

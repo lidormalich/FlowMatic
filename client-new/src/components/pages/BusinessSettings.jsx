@@ -29,6 +29,8 @@ const BusinessSettings = () => {
             endHour: 17,
             workingDays: [0, 1, 2, 3, 4],
             slotInterval: 30,
+            bufferMinutes: 0,
+            flexibleSlots: false,
             breakTime: {
                 enabled: false,
                 startHour: 12,
@@ -88,6 +90,8 @@ const BusinessSettings = () => {
                     endHour: userData.businessHours?.endHour ?? 17,
                     workingDays: userData.businessHours?.workingDays || [0, 1, 2, 3, 4],
                     slotInterval: userData.businessHours?.slotInterval ?? 30,
+                    bufferMinutes: userData.businessHours?.bufferMinutes ?? 0,
+                    flexibleSlots: userData.businessHours?.flexibleSlots ?? false,
                     breakTime: {
                         enabled: userData.businessHours?.breakTime?.enabled ?? false,
                         startHour: userData.businessHours?.breakTime?.startHour ?? 12,
@@ -194,12 +198,18 @@ const BusinessSettings = () => {
             toast.error('הקובץ גדול מדי. מקסימום 2MB');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            handleNestedChange('themeSettings', 'logoUrl', event.target.result);
+        const data = new FormData();
+        data.append('image', file);
+        try {
+            toast.info('מעלה לוגו...');
+            const res = await api.post('/users/upload-profile-image', data, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            handleNestedChange('themeSettings', 'logoUrl', res.data.url);
             toast.success('הלוגו הועלה בהצלחה');
-        };
-        reader.readAsDataURL(file);
+        } catch (err) {
+            toast.error('שגיאה בהעלאת הלוגו');
+        }
     };
 
     // iOS Toggle component
@@ -441,27 +451,6 @@ const BusinessSettings = () => {
                         </div>
                     </div>
 
-                    {/* Slot Interval */}
-                    <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] p-5">
-                        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 text-right">מרווח בין תורים</h3>
-                        <p className="text-[10px] text-slate-400 mb-3 text-right">כל כמה דקות יוצג סלוט פנוי</p>
-                        <div className="flex flex-wrap gap-2">
-                            {[10, 15, 20, 30, 45, 60].map(interval => (
-                                <button
-                                    key={interval}
-                                    type="button"
-                                    onClick={() => handleNestedChange('businessHours', 'slotInterval', interval)}
-                                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${formData.businessHours.slotInterval === interval
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
-                                        : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
-                                    }`}
-                                >
-                                    {interval} דק׳
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
                     {/* Break Time */}
                     <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
                         <div className="flex items-center justify-between p-5">
@@ -504,25 +493,57 @@ const BusinessSettings = () => {
                         )}
                     </div>
 
-                    {/* Smart Gap */}
+                    {/* Buffer between appointments */}
                     <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] p-5">
-                        <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1 text-right">Smart Gap</h3>
-                        <p className="text-[10px] text-slate-400 mb-3 text-right">סלוטים שמשאירים חור קטן מדי בין תורים יוסתרו</p>
-                        <div className="flex flex-wrap gap-2">
-                            {[0, 10, 15, 20, 30].map(gap => (
+                        <div className="flex items-start justify-between mb-1">
+                            <span className="text-lg">☕</span>
+                            <div className="text-right flex-1 mr-2">
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white">זמן מנוחה בין תור לתור</h3>
+                                <p className="text-[10px] text-slate-400 mt-0.5">כי גם לך מגיע לנוח — המערכת תחסום אוטומטית זמן פנוי בין לקוח ללקוח</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                            {[0, 5, 10, 15, 20].map(buf => (
                                 <button
-                                    key={gap}
+                                    key={buf}
                                     type="button"
-                                    onClick={() => handleNestedChange('businessHours', 'minGapMinutes', gap)}
-                                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${formData.businessHours.minGapMinutes === gap
-                                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                                    onClick={() => handleNestedChange('businessHours', 'bufferMinutes', buf)}
+                                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${formData.businessHours.bufferMinutes === buf
+                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
                                         : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                                     }`}
                                 >
-                                    {gap === 0 ? 'ללא' : `${gap} דקות`}
+                                    {buf === 0 ? 'תורים צמודים' : `${buf} דק׳`}
                                 </button>
                             ))}
                         </div>
+                        {formData.businessHours.bufferMinutes > 0 && (
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-2 text-right font-medium">
+                                אחרי כל תור תהיה לך הפסקה של {formData.businessHours.bufferMinutes} דקות לפני הלקוח הבא
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Flexible Slots */}
+                    <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
+                        <div className="flex items-center justify-between p-5">
+                            <Toggle
+                                checked={formData.businessHours.flexibleSlots}
+                                onChange={(v) => handleNestedChange('businessHours', 'flexibleSlots', v)}
+                                color="green"
+                            />
+                            <div className="text-right flex-1 mr-3">
+                                <h3 className="font-bold text-slate-900 dark:text-white text-sm">תורים גמישים</h3>
+                                <p className="text-[10px] text-slate-400 mt-0.5">הצג כל שעה פנויה, גם באמצע — לא רק כל {formData.businessHours.slotInterval} דקות</p>
+                            </div>
+                        </div>
+                        {formData.businessHours.flexibleSlots && (
+                            <div className="border-t border-slate-100 dark:border-slate-700/50 px-5 pb-4 pt-3">
+                                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium text-right">
+                                    המערכת תבדוק כל 5 דקות ותציג כל חלון פנוי — לקוחות יוכלו לקבוע גם ב-9:05, 9:35 וכו׳
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

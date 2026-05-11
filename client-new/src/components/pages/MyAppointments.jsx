@@ -18,7 +18,7 @@ const MyAppointments = () => {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id) => appointmentsApi.cancelBooking(id),
+    mutationFn: ({ id, customerPhone }) => appointmentsApi.cancelBooking(id, customerPhone),
     onSuccess: () => {
       queryClient.invalidateQueries(['my-bookings']);
       toast.success('התור בוטל בהצלחה');
@@ -63,9 +63,9 @@ const MyAppointments = () => {
     return configs[status] || { label: status, bg: 'bg-slate-100 dark:bg-slate-700/30', text: 'text-slate-600 dark:text-slate-400', icon: '?' };
   };
 
-  const handleCancel = (id) => {
+  const handleCancel = (id, customerPhone) => {
     if (cancellingId === id) {
-      cancelMutation.mutate(id);
+      cancelMutation.mutate({ id, customerPhone });
     } else {
       setCancellingId(id);
       setTimeout(() => setCancellingId(null), 3000);
@@ -208,7 +208,7 @@ const MyAppointments = () => {
                     {/* Cancel button - only for upcoming */}
                     {activeTab === 'upcoming' && booking.status !== 'cancelled' && (
                       <button
-                        onClick={() => handleCancel(booking._id)}
+                        onClick={() => handleCancel(booking._id, booking.customerPhone)}
                         disabled={cancelMutation.isPending && cancellingId === booking._id}
                         className={`text-xs font-semibold px-3 py-1.5 rounded-xl transition-all duration-200 ${
                           cancellingId === booking._id

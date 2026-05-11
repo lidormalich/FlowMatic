@@ -16,7 +16,9 @@
       "Bash(npm run build:*)",
       "Bash(npx web-push:*)",
       "Bash(npx react-scripts build:*)",
-      "Bash(config \")"
+      "Bash(config \")",
+      "Bash(npx vite *)",
+      "mcp__context-brain__get_architecture"
     ]
   }
 }

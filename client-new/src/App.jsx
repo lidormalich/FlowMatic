@@ -32,6 +32,8 @@ import Templates from './components/pages/Templates';
 import MyAppointments from './components/pages/MyAppointments';
 import NotificationCenter from './components/pages/NotificationCenter';
 import NotFound from './components/pages/NotFound';
+import LandingPage from './components/pages/LandingPage';
+import OnboardingWizard from './components/pages/OnboardingWizard';
 
 import './App.css';
 
@@ -41,7 +43,7 @@ function AppContent() {
   const location = useLocation();
 
   // Define public routes where Navbar and Sidebar should be hidden
-  const isPublicRoute = location.pathname.startsWith('/book/');
+  const isPublicRoute = location.pathname.startsWith('/book/') || location.pathname === '/onboarding';
 
   return (
     <div className={`min-h-screen flex flex-col ${isDark ? 'bg-slate-950 text-slate-200' : ''}`} dir="rtl">
@@ -54,6 +56,14 @@ function AppContent() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route
+              path="/onboarding"
+              element={
+                <PrivateRoute>
+                  <OnboardingWizard />
+                </PrivateRoute>
+              }
+            />
             <Route path="/AppointmentScheduler" element={<AppointmentScheduler />} />
             <Route path="/book/:username" element={<PublicBooking />} />
             {/* <Route path="/:username" element={<PublicBooking />} /> */}
@@ -169,7 +179,7 @@ function AppContent() {
                 isAuthenticated ? (
                   <Navigate to="/dashboard" replace />
                 ) : (
-                  <Navigate to="/login" replace />
+                  <LandingPage />
                 )
               }
             />
