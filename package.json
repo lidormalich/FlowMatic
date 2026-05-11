@@ -43,6 +43,6 @@
     "server": "nodemon server.js",
     "client": "npm start --prefix client-new",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "build": "npm install --prefix client-new && npm run build --prefix client-new"
+    "build": "npm install --include=dev --prefix client-new && npm run build --prefix client-new"
   }
 }
