@@ -110,6 +110,24 @@ const UserSchema = new Schema({
         type: Boolean,
         default: false
     },
+    subscription: {
+        status: {
+            type: String,
+            enum: ['trial', 'active', 'suspended', 'expired'],
+            default: 'trial'
+        },
+        trialEndsAt: {
+            type: Date,
+            default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+        },
+        subscribedAt: { type: Date },
+        notes: { type: String, default: '' }
+    },
+    tos: {
+        agreedAt: { type: Date, default: null },
+        version: { type: String, default: null },
+        ip: { type: String, default: '' }
+    },
     date: {
         type: Date,
         default: Date.now

@@ -50,8 +50,8 @@ const AppointmentTypes = () => {
       return;
     }
     files.slice(0, remaining).forEach(file => {
-      if (file.size > 500 * 1024) {
-        toast.error(`הקובץ ${file.name} גדול מדי (מקסימום 500KB)`);
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error(`הקובץ ${file.name} גדול מדי (מקסימום 2MB)`);
         return;
       }
       const reader = new FileReader();

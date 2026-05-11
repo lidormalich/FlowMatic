@@ -31,6 +31,9 @@ import Inventory from './components/pages/Inventory';
 import Templates from './components/pages/Templates';
 import MyAppointments from './components/pages/MyAppointments';
 import NotificationCenter from './components/pages/NotificationCenter';
+import ManageBooking from './components/pages/ManageBooking';
+import AdminDashboard from './components/pages/AdminDashboard';
+import TermsOfService from './components/pages/TermsOfService';
 import NotFound from './components/pages/NotFound';
 import LandingPage from './components/pages/LandingPage';
 import OnboardingWizard from './components/pages/OnboardingWizard';
@@ -66,6 +69,8 @@ function AppContent() {
             />
             <Route path="/AppointmentScheduler" element={<AppointmentScheduler />} />
             <Route path="/book/:username" element={<PublicBooking />} />
+            <Route path="/manage-booking/:token" element={<ManageBooking />} />
+            <Route path="/terms" element={<TermsOfService />} />
             {/* <Route path="/:username" element={<PublicBooking />} /> */}
 
             <Route
@@ -169,6 +174,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <NotificationCenter />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <PrivateRoute>
+                  <AdminDashboard />
                 </PrivateRoute>
               }
             />

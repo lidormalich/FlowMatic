@@ -2,6 +2,26 @@ import { useState, useRef, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useUsers } from '../../hooks/useUsers';
 
+const SUB_STATUSES = [
+  { value: 'trial',     label: 'ניסיון',   color: 'bg-amber-100 text-amber-700' },
+  { value: 'active',    label: 'פעיל',     color: 'bg-green-100 text-green-700' },
+  { value: 'suspended', label: 'מושעה',    color: 'bg-red-100 text-red-700' },
+  { value: 'expired',   label: 'פג תוקף',  color: 'bg-slate-100 text-slate-600' },
+];
+
+const getSubBadge = (user) => {
+  if (user.role !== 'business_owner') return null;
+  const sub = user.subscription;
+  const status = sub?.status || 'trial';
+  const found = SUB_STATUSES.find(s => s.value === status) || SUB_STATUSES[0];
+  let extra = '';
+  if (status === 'trial' && sub?.trialEndsAt) {
+    const days = Math.ceil((new Date(sub.trialEndsAt) - new Date()) / (1000 * 60 * 60 * 24));
+    extra = days > 0 ? ` (${days}י׳)` : ' (פג)';
+  }
+  return { ...found, label: found.label + extra };
+};
+
 const Users = () => {
   const {
     users,
@@ -10,7 +30,8 @@ const Users = () => {
     updateUser,
     deleteUser,
     suspendUser,
-    updateCredits
+    updateCredits,
+    updateSubscription,
   } = useUsers();
 
   const [showModal, setShowModal] = useState(false);
@@ -20,6 +41,8 @@ const Users = () => {
   const [creditsPopover, setCreditsPopover] = useState({ open: false, userId: null, currentCredits: 0 });
   const [creditsInput, setCreditsInput] = useState('');
   const creditsPopoverRef = useRef(null);
+  const [subPopover, setSubPopover] = useState({ open: false, userId: null });
+  const subPopoverRef = useRef(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -85,6 +108,9 @@ const Users = () => {
     const handleClickOutside = (e) => {
       if (creditsPopoverRef.current && !creditsPopoverRef.current.contains(e.target)) {
         setCreditsPopover({ open: false, userId: null, currentCredits: 0 });
+      }
+      if (subPopoverRef.current && !subPopoverRef.current.contains(e.target)) {
+        setSubPopover({ open: false, userId: null });
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -328,6 +354,7 @@ const Users = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredUsers.map((user) => {
                   const roleBadge = getRoleBadge(user.role);
+                  const subBadge = getSubBadge(user);
                   return (
                     <tr key={user._id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4 text-right">
@@ -345,9 +372,48 @@ const Users = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${roleBadge.color}`}>
-                          {roleBadge.text}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${roleBadge.color}`}>
+                            {roleBadge.text}
+                          </span>
+                          {subBadge && (
+                            <div className="relative">
+                              <button
+                                onClick={() => setSubPopover(prev =>
+                                  prev.open && prev.userId === user._id
+                                    ? { open: false, userId: null }
+                                    : { open: true, userId: user._id }
+                                )}
+                                className={`px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity ${subBadge.color}`}
+                                title="לחץ לשינוי סטטוס מנוי"
+                              >
+                                {subBadge.label}
+                              </button>
+                              {subPopover.open && subPopover.userId === user._id && (
+                                <div
+                                  ref={subPopoverRef}
+                                  className="absolute top-full right-0 mt-1 bg-white rounded-2xl shadow-xl border border-slate-200 p-3 z-50 min-w-[160px]"
+                                >
+                                  <p className="text-xs font-bold text-slate-500 mb-2 text-right">שנה סטטוס מנוי</p>
+                                  <div className="space-y-1">
+                                    {SUB_STATUSES.map(s => (
+                                      <button
+                                        key={s.value}
+                                        onClick={() => {
+                                          updateSubscription({ id: user._id, data: { status: s.value } });
+                                          setSubPopover({ open: false, userId: null });
+                                        }}
+                                        className={`w-full text-right px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors hover:opacity-80 ${s.color}`}
+                                      >
+                                        {s.label.replace(/\s*\(.*?\)/, '')}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right relative">
                         <div className="flex items-center gap-2 justify-end">

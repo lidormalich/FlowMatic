@@ -9,7 +9,7 @@ const features = [
       </svg>
     ),
     title: 'ניהול תורים חכם',
-    desc: 'קביעה, עריכה וביטול בקליק אחד. לוח שנה ברור עם תמיכה מלאה בעברית ותאריך עברי.',
+    desc: 'קביעה, עריכה וביטול בקליק אחד. לוח שנה ברור עם תמיכה מלאה בעברית ותאריכים עבריים.',
     color: 'blue',
   },
   {
@@ -59,7 +59,7 @@ const features = [
       </svg>
     ),
     title: 'ניהול מלאי',
-    desc: 'עקוב אחר מוצרים וחומרים, קבל התראות על מלאי נמוך ונהל רכישות בקלות.',
+    desc: 'עקוב אחר מוצרים וחומרים, קבל התראות על מלאי נמוך ושמור על הסדר בעסק.',
     color: 'purple',
   },
 ];
@@ -84,7 +84,7 @@ const included = [
   'דוחות ואנליטיקה מלאים',
   'התראות SMS ו-Push',
   'ניהול מלאי',
-  'תמיכה בעברית מלאה + RTL',
+  'ממשק עברי מלא — כיוון ימין-לשמאל',
   'גיבוי אוטומטי של כל הנתונים',
 ];
 
@@ -104,8 +104,7 @@ const LandingPage = () => {
         <div className="relative max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 text-sm font-semibold px-4 py-2 rounded-full mb-8 border border-blue-100 dark:border-blue-500/20">
             <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-            מערכת ניהול עסק חכמה לישראל
-          </div>
+            מערכת ניהול תורים חכמה לעסק שלך          </div>
 
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black leading-tight mb-6 tracking-tight">
             ניהול העסק שלך,{' '}
@@ -135,7 +134,7 @@ const LandingPage = () => {
           </div>
 
           <p className="mt-6 text-sm text-slate-400 dark:text-slate-500">
-            ללא כרטיס אשראי · ביטול בכל עת · ניסיון חינם 14 יום
+            ללא כרטיס אשראי · ביטול בכל עת · ניסיון חינמי ל-14 יום
           </p>
         </div>
       </section>
@@ -169,7 +168,7 @@ const LandingPage = () => {
           <div className="text-center mb-16">
             <h2 className="text-4xl font-black mb-4">הכל במקום אחד</h2>
             <p className="text-slate-500 dark:text-slate-400 text-lg">
-              כלים שכל עסק צריך, ממשק שכל אחד יכול להפעיל
+              כלים שכל עסק צריך — ממשק שכל אחד יכול להפעיל
             </p>
           </div>
 
@@ -238,7 +237,7 @@ const LandingPage = () => {
                 <span className="text-slate-500 text-lg">/ חודש</span>
               </div>
               <p className="text-slate-500 dark:text-slate-400 text-sm">
-                14 ימי ניסיון ראשונים — בחינם לגמרי
+                14 ימי ניסיון חינמיים — ללא כרטיס אשראי
               </p>
             </div>
 
@@ -274,7 +273,7 @@ const LandingPage = () => {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-4xl font-black mb-4">מוכן להתחיל?</h2>
           <p className="text-slate-500 dark:text-slate-400 text-lg mb-10">
-            הצטרף לעסקים שכבר מנהלים את התורים שלהם עם FlowMatic
+            הצטרף לעסקים שכבר מנהלים את התורים שלהם באמצעות FlowMatic
           </p>
           <Link
             to="/register"

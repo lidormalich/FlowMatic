@@ -295,6 +295,10 @@ export const usersApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
+  },
+  updateSubscription: async (id, data) => {
+    const response = await api.put(`/users/${id}/subscription`, data);
+    return response.data;
   }
 };
 

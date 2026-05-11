@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { toast } from 'react-toastify';
 import { usersApi } from '../../services/api';
+import { TOS_VERSION } from '../pages/TermsOfService';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -15,6 +16,8 @@ const Register = () => {
     businessName: '',
     phoneNumber: '',
   });
+
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [usernameStatus, setUsernameStatus] = useState({
     checking: false,
@@ -103,13 +106,17 @@ const Register = () => {
       return;
     }
 
-    // Check if username is available
     if (usernameStatus.available !== true) {
       toast.error('שם המשתמש לא זמין או לא תקין');
       return;
     }
 
-    register(formData);
+    if (!agreedToTerms) {
+      toast.error('יש לאשר את תנאי השימוש כדי להירשם');
+      return;
+    }
+
+    register({ ...formData, agreedToTerms: true, tosVersion: TOS_VERSION });
   };
 
   const inputClass = "w-full h-12 bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl px-4 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-700 transition-all duration-200 outline-none";
@@ -303,9 +310,27 @@ const Register = () => {
             </div>
           </div>
 
+          {/* Terms of Service */}
+          <div className="flex items-start gap-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200 dark:border-slate-700">
+            <input
+              type="checkbox"
+              id="agreedToTerms"
+              checked={agreedToTerms}
+              onChange={e => setAgreedToTerms(e.target.checked)}
+              className="mt-0.5 w-5 h-5 rounded accent-blue-600 cursor-pointer flex-shrink-0"
+            />
+            <label htmlFor="agreedToTerms" className="text-sm text-slate-600 dark:text-slate-300 cursor-pointer leading-relaxed text-right">
+              קראתי ואני מסכים/ה ל
+              <Link to="/terms" target="_blank" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline mx-1">
+                תנאי השימוש
+              </Link>
+              של FlowMatic (גרסה {TOS_VERSION}), לרבות מדיניות הפרטיות ואיסוף הנתונים המתואר בה.
+            </label>
+          </div>
+
           <button
             type="submit"
-            disabled={isRegisterLoading || usernameStatus.available !== true}
+            disabled={isRegisterLoading || usernameStatus.available !== true || !agreedToTerms}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-full
                      shadow-lg shadow-blue-500/30 transition-all duration-200 active:scale-95
                      disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 mt-6"

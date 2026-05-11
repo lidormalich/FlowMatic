@@ -87,6 +87,11 @@ const eventSchema = new Schema({
         type: String,
         default: null
     },
+    cancelToken: {
+        type: String,
+        default: null,
+        index: true
+    },
     smsSent: {
         type: Boolean,
         default: false

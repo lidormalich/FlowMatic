@@ -3,11 +3,14 @@ const router = express.Router();
 const passport = require('passport');
 const Joi = require('joi');
 const moment = require('moment');
+const crypto = require('crypto');
 const Event = require('../../models/Event');
 const User = require('../../models/User');
 const AppointmentType = require('../../models/AppointmentType');
 const Client = require('../../models/Client');
 const { sendAppointmentConfirmationSMS, sendAppointmentCancellationSMS } = require('../../services/smsService');
+
+const generateCancelToken = () => crypto.randomBytes(32).toString('hex');
 
 
 // Joi Validation Schema
@@ -496,7 +499,8 @@ router.post('/public/:username', async (req, res) => {
       service: serviceNames,
       price: totalPrice,
       description: description || '',
-      status: 'pending'
+      status: 'pending',
+      cancelToken: generateCancelToken()
     });
 
     await newAppointment.save();
@@ -840,6 +844,90 @@ router.post('/block-range', passport.authenticate('jwt', { session: false }), as
     });
   } catch (err) {
     console.error('Block range error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// GET /api/appointments/manage/:token - Get appointment details by cancel token (public)
+router.get('/manage/:token', async (req, res) => {
+  try {
+    const appointment = await Event.findOne({ cancelToken: req.params.token })
+      .select('customerName customerPhone service date startTime endTime status businessOwnerId duration price');
+
+    if (!appointment) return res.status(404).json({ message: 'תור לא נמצא' });
+    if (appointment.status === 'cancelled') return res.status(410).json({ message: 'התור כבר בוטל' });
+
+    const owner = await User.findById(appointment.businessOwnerId).select('businessName username themeSettings');
+
+    res.json({ appointment, business: owner });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// POST /api/appointments/manage/:token/cancel - Cancel appointment by token (public)
+router.post('/manage/:token/cancel', async (req, res) => {
+  try {
+    const appointment = await Event.findOne({ cancelToken: req.params.token });
+    if (!appointment) return res.status(404).json({ message: 'תור לא נמצא' });
+    if (appointment.status === 'cancelled') return res.status(410).json({ message: 'התור כבר בוטל' });
+    if (appointment.status === 'completed') return res.status(400).json({ message: 'לא ניתן לבטל תור שכבר הושלם' });
+
+    const hoursUntil = moment(appointment.date).diff(moment(), 'hours');
+    const owner = await User.findById(appointment.businessOwnerId).select('cancellationPolicy businessName');
+
+    if (owner?.cancellationPolicy?.enabled && hoursUntil < (owner.cancellationPolicy.hoursBefore || 24)) {
+      return res.status(400).json({
+        message: `לא ניתן לבטל תור פחות מ-${owner.cancellationPolicy.hoursBefore || 24} שעות לפני המועד`
+      });
+    }
+
+    appointment.status = 'cancelled';
+    appointment.cancelToken = null;
+    await appointment.save();
+
+    res.json({ message: 'התור בוטל בהצלחה' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// POST /api/appointments/manage/:token/reschedule - Reschedule appointment by token (public)
+router.post('/manage/:token/reschedule', async (req, res) => {
+  try {
+    const { date, startTime } = req.body;
+    if (!date || !startTime) return res.status(400).json({ message: 'תאריך ושעה הם שדות חובה' });
+
+    const appointment = await Event.findOne({ cancelToken: req.params.token });
+    if (!appointment) return res.status(404).json({ message: 'תור לא נמצא' });
+    if (appointment.status === 'cancelled') return res.status(410).json({ message: 'התור כבר בוטל' });
+    if (appointment.status === 'completed') return res.status(400).json({ message: 'לא ניתן לשנות תור שכבר הושלם' });
+
+    const hoursUntil = moment(appointment.date).diff(moment(), 'hours');
+    if (hoursUntil < 2) {
+      return res.status(400).json({ message: 'לא ניתן לשנות תור פחות מ-2 שעות לפני המועד' });
+    }
+
+    // Verify new slot is available
+    const slots = await calculateAvailableSlots(appointment.businessOwnerId, date, appointment.duration, appointment.staffId);
+    if (!slots.includes(startTime)) {
+      return res.status(400).json({ message: 'השעה שנבחרה כבר תפוסה' });
+    }
+
+    const [hours, minutes] = startTime.split(':');
+    const newEnd = moment(date).hour(parseInt(hours)).minute(parseInt(minutes)).add(appointment.duration, 'minutes');
+
+    appointment.date = moment(date).toDate();
+    appointment.startTime = startTime;
+    appointment.endTime = newEnd.format('HH:mm');
+    appointment.status = 'pending';
+    await appointment.save();
+
+    res.json({ message: 'התור עודכן בהצלחה', appointment });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
 });

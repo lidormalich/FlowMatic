@@ -10,6 +10,7 @@ const validateRegisterInput = require('../../validation/register');
 const validateLoginInput = require('../../validation/login');
 const validateUpdateUserInput = require('../../validation/updateUser');
 const User = require('../../models/User');
+const Event = require('../../models/Event');
 const cloudinary = require('../../utils/cloudinary');
 
 const upload = multer({
@@ -99,6 +100,33 @@ router.put('/onboarding', passport.authenticate('jwt', { session: false }), asyn
         res.json(updatedUser);
     } catch (err) {
         console.error('Onboarding error:', err);
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
+
+// @route   PUT api/users/:id/subscription
+// @desc    Update subscription status (admin only)
+// @access  Private/Admin
+router.put('/:id/subscription', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'אין הרשאה' });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'משתמש לא נמצא' });
+
+        const { status, notes } = req.body;
+        if (status) user.subscription.status = status;
+        if (status === 'active' && !user.subscription.subscribedAt) {
+            user.subscription.subscribedAt = new Date();
+        }
+        if (notes !== undefined) user.subscription.notes = notes;
+
+        await user.save();
+        const updated = await User.findById(req.params.id).select('-password');
+        res.json(updated);
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'שגיאת שרת' });
     }
 });
@@ -431,9 +459,12 @@ router.post('/register', async (req, res) => {
             hasPassword2: !!req.body.password2
         });
 
+        if (!req.body.agreedToTerms) {
+            return res.status(400).json({ message: 'יש לאשר את תנאי השימוש כדי להירשם' });
+        }
+
         const { errors, isValid } = validateRegisterInput(req.body);
         if (!isValid) {
-            console.log('❌ Validation failed:', errors);
             return res.status(400).json(errors);
         }
 
@@ -463,6 +494,7 @@ router.post('/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(req.body.password, salt);
 
         // Create new user
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || '';
         const newUser = new User({
             name: req.body.name,
             email: email,
@@ -471,7 +503,12 @@ router.post('/register', async (req, res) => {
             role: req.body.role || 'client',
             businessName: req.body.businessName || '',
             phoneNumber: req.body.phoneNumber || '',
-            credits: req.body.credits || 0
+            credits: req.body.credits || 0,
+            tos: {
+                agreedAt: new Date(),
+                version: req.body.tosVersion || '1.0',
+                ip: clientIp
+            }
         });
 
         const savedUser = await newUser.save();
@@ -621,6 +658,147 @@ router.post('/upload-profile-image', passport.authenticate('jwt', { session: fal
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ message: 'שגיאה בהעלאת התמונה' });
+  }
+});
+
+// @route   GET api/users/admin/stats
+// @desc    Super-admin dashboard stats across all businesses
+// @access  Private/Admin
+router.get('/admin/stats', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const mongoose = require('mongoose');
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now - 60 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    // All business owners
+    const businesses = await User.find({ role: 'business_owner' })
+      .select('name email businessName createdAt isActive isSuspended credits themeSettings tos subscription')
+      .sort({ createdAt: -1 });
+
+    const businessIds = businesses.map(b => b._id);
+
+    // Appointment stats per business
+    const appointmentStats = await Event.aggregate([
+      { $match: { businessOwnerId: { $in: businessIds } } },
+      {
+        $group: {
+          _id: '$businessOwnerId',
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+          noShow: { $sum: { $cond: [{ $eq: ['$status', 'no_show'] }, 1, 0] } },
+          revenue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$price', 0] } },
+          lastActivity: { $max: '$createdAt' },
+          thisMonth: { $sum: { $cond: [{ $gte: ['$createdAt', startOfMonth] }, 1, 0] } },
+          lastMonth: { $sum: { $cond: [{ $and: [{ $gte: ['$createdAt', startOfLastMonth] }, { $lte: ['$createdAt', endOfLastMonth] }] }, 1, 0] } },
+          uniqueClients: { $addToSet: '$customerPhone' }
+        }
+      }
+    ]);
+
+    const statsMap = {};
+    appointmentStats.forEach(s => { statsMap[s._id.toString()] = s; });
+
+    const businessesWithStats = businesses.map(b => {
+      const stats = statsMap[b._id.toString()] || { total: 0, completed: 0, cancelled: 0, noShow: 0, revenue: 0, lastActivity: null, thisMonth: 0, lastMonth: 0, uniqueClients: [] };
+      const isInactive = !stats.lastActivity || stats.lastActivity < thirtyDaysAgo;
+      const engagementRate = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+      return {
+        ...b.toJSON(),
+        totalAppointments: stats.total,
+        completedAppointments: stats.completed,
+        cancelledAppointments: stats.cancelled,
+        noShowAppointments: stats.noShow,
+        totalRevenue: stats.revenue,
+        appointmentsThisMonth: stats.thisMonth,
+        appointmentsLastMonth: stats.lastMonth,
+        uniqueClientsCount: stats.uniqueClients.length,
+        lastActivity: stats.lastActivity,
+        isInactive,
+        engagementRate
+      };
+    });
+
+    // Global KPIs
+    const globalStats = await Event.aggregate([
+      { $group: {
+        _id: null,
+        totalAppointments: { $sum: 1 },
+        totalCompleted: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        totalCancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+        totalNoShow: { $sum: { $cond: [{ $eq: ['$status', 'no_show'] }, 1, 0] } },
+        totalRevenue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$price', 0] } },
+        thisMonth: { $sum: { $cond: [{ $gte: ['$createdAt', startOfMonth] }, 1, 0] } },
+        lastMonth: { $sum: { $cond: [{ $and: [{ $gte: ['$createdAt', startOfLastMonth] }, { $lte: ['$createdAt', endOfLastMonth] }] }, 1, 0] } },
+        uniqueClients: { $addToSet: '$customerPhone' }
+      }}
+    ]);
+
+    const g = globalStats[0] || { totalAppointments: 0, totalCompleted: 0, totalCancelled: 0, totalNoShow: 0, totalRevenue: 0, thisMonth: 0, lastMonth: 0, uniqueClients: [] };
+
+    // New businesses this month vs last month
+    const newThisMonth = businesses.filter(b => b.createdAt >= startOfMonth).length;
+    const newLastMonth = businesses.filter(b => b.createdAt >= startOfLastMonth && b.createdAt <= endOfLastMonth).length;
+    const growthRate = newLastMonth > 0 ? Math.round(((newThisMonth - newLastMonth) / newLastMonth) * 100) : null;
+
+    // ToS compliance
+    const tosCompliant = businesses.filter(b => b.tos?.agreedAt).length;
+
+    // Engaged businesses (10+ appointments total)
+    const engagedBusinesses = businessesWithStats.filter(b => b.totalAppointments >= 10).length;
+
+    // Average appointments per active business
+    const activeBusinesses = businessesWithStats.filter(b => !b.isInactive && !b.isSuspended);
+    const avgAppointmentsPerBusiness = activeBusinesses.length > 0
+      ? Math.round(activeBusinesses.reduce((s, b) => s + b.appointmentsThisMonth, 0) / activeBusinesses.length)
+      : 0;
+
+    // MoM appointment growth
+    const appointmentGrowthRate = g.lastMonth > 0 ? Math.round(((g.thisMonth - g.lastMonth) / g.lastMonth) * 100) : null;
+
+    // No-show rate
+    const noShowRate = g.totalAppointments > 0 ? Math.round((g.totalNoShow / g.totalAppointments) * 100) : 0;
+    const cancellationRate = g.totalAppointments > 0 ? Math.round((g.totalCancelled / g.totalAppointments) * 100) : 0;
+
+    res.json({
+      businesses: businessesWithStats,
+      totals: {
+        businesses: businesses.length,
+        activeBusinesses: activeBusinesses.length,
+        inactiveBusinesses: businessesWithStats.filter(b => b.isInactive && !b.isSuspended).length,
+        suspendedBusinesses: businessesWithStats.filter(b => b.isSuspended).length,
+        engagedBusinesses,
+        totalAppointments: g.totalAppointments,
+        totalRevenue: g.totalRevenue,
+        appointmentsThisMonth: g.thisMonth,
+        appointmentsLastMonth: g.lastMonth,
+        totalUniqueClients: g.uniqueClients.length,
+        newBusinessesThisMonth: newThisMonth,
+        newBusinessesLastMonth: newLastMonth
+      },
+      kpis: {
+        growthRate,
+        appointmentGrowthRate,
+        noShowRate,
+        cancellationRate,
+        avgAppointmentsPerBusiness,
+        tosCompliantRate: businesses.length > 0 ? Math.round((tosCompliant / businesses.length) * 100) : 0,
+        tosCompliantCount: tosCompliant,
+        platformConversionRate: businesses.length > 0 ? Math.round((engagedBusinesses / businesses.length) * 100) : 0,
+        avgRevenuePerBusiness: activeBusinesses.length > 0
+          ? Math.round(activeBusinesses.reduce((s, b) => s + b.totalRevenue, 0) / activeBusinesses.length)
+          : 0
+      }
+    });
+  } catch (err) {
+    console.error('Admin stats error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
   }
 });
 

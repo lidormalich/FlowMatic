@@ -65,6 +65,18 @@ export const useUsers = () => {
     }
   });
 
+  // Update subscription mutation
+  const updateSubscriptionMutation = useMutation({
+    mutationFn: ({ id, data }) => usersApi.updateSubscription(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('המנוי עודכן בהצלחה');
+    },
+    onError: () => {
+      toast.error('שגיאה בעדכון המנוי');
+    }
+  });
+
   // Update credits mutation
   const updateCreditsMutation = useMutation({
     mutationFn: ({ id, amount }) => usersApi.updateCredits(id, amount),
@@ -85,6 +97,7 @@ export const useUsers = () => {
     updateUser: updateMutation.mutate,
     deleteUser: deleteMutation.mutate,
     suspendUser: suspendMutation.mutate,
+    updateSubscription: updateSubscriptionMutation.mutate,
     updateCredits: updateCreditsMutation.mutate,
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
