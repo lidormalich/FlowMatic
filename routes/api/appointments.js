@@ -506,6 +506,11 @@ router.post('/public/:username', async (req, res) => {
     await newAppointment.save();
     console.log(`[BOOKING] SUCCESS: Saved appointment ${newAppointment._id} for Owner ${owner._id}`);
 
+    User.findByIdAndUpdate(owner._id, {
+      $inc: { 'usageStats.appointmentsCreated': 1 },
+      $set: { 'usageStats.lastActionAt': new Date() }
+    }).catch(() => {});
+
     // Send SMS confirmation if enabled and user has credits
     if (owner.smsNotifications?.enabled && owner.credits >= 2) {
       try {
@@ -562,6 +567,11 @@ router.post('/', passport.authenticate('jwt', { session: false }), async (req, r
     });
 
     await newAppointment.save();
+
+    User.findByIdAndUpdate(req.user.id, {
+      $inc: { 'usageStats.appointmentsCreated': 1 },
+      $set: { 'usageStats.lastActionAt': new Date() }
+    }).catch(() => {});
 
     res.status(201).json({
       message: 'התור נוסף בהצלחה',
@@ -661,6 +671,11 @@ router.delete('/:id', passport.authenticate('jwt', { session: false }), async (r
 
     appointment.status = 'cancelled';
     await appointment.save();
+
+    User.findByIdAndUpdate(req.user.id, {
+      $inc: { 'usageStats.appointmentsCancelled': 1 },
+      $set: { 'usageStats.lastActionAt': new Date() }
+    }).catch(() => {});
 
     res.json({ message: 'התור בוטל בהצלחה' });
   } catch (err) {

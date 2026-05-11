@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import moment from 'moment';
 import 'moment/locale/he';
 import { toast } from 'react-toastify';
+import BusinessDetailModal from './BusinessDetailModal';
 
 moment.locale('he');
 
@@ -45,20 +46,20 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [selectedBusinessId, setSelectedBusinessId] = useState(null);
 
-  useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await api.get('/users/admin/stats');
-        setData(res.data);
-      } catch {
-        toast.error('שגיאה בטעינת נתוני מנהל');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetch();
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await api.get('/users/admin/stats');
+      setData(res.data);
+    } catch {
+      toast.error('שגיאה בטעינת נתוני מנהל');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const filteredBusinesses = data?.businesses?.filter(b => {
     const matchSearch = !search ||
@@ -83,6 +84,13 @@ const AdminDashboard = () => {
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto" dir="rtl">
+      {selectedBusinessId && (
+        <BusinessDetailModal
+          businessId={selectedBusinessId}
+          onClose={() => setSelectedBusinessId(null)}
+          onUpdated={loadStats}
+        />
+      )}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">לוח בקרה — מנהל מערכת</h1>
         <p className="text-slate-400 text-sm mt-1">סקירה גלובלית של הפלטפורמה</p>
@@ -195,15 +203,17 @@ const AdminDashboard = () => {
                 <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden md:table-cell">לקוחות</th>
                 <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden md:table-cell">הכנסות</th>
                 <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">ToS</th>
-                <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">פעילות</th>
+                <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden lg:table-cell">כניסה אחרונה</th>
+                <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400 hidden xl:table-cell">פעילות</th>
                 <th className="text-center p-4 font-semibold text-slate-500 dark:text-slate-400">סטטוס</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {filteredBusinesses.length === 0 ? (
-                <tr><td colSpan={8} className="text-center p-8 text-slate-400">לא נמצאו עסקים</td></tr>
+                <tr><td colSpan={9} className="text-center p-8 text-slate-400">לא נמצאו עסקים</td></tr>
               ) : filteredBusinesses.map(b => (
-                <tr key={b._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                <tr key={b._id} onClick={() => setSelectedBusinessId(b._id)}
+                  className="hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors cursor-pointer">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       {b.themeSettings?.logoUrl ? (
@@ -245,7 +255,15 @@ const AdminDashboard = () => {
                       <span className="text-slate-300 dark:text-slate-600 text-lg">✗</span>
                     )}
                   </td>
-                  <td className="p-4 text-center text-xs text-slate-400 hidden lg:table-cell">
+                  <td className="p-4 text-center text-xs hidden lg:table-cell">
+                    {b.lastLoginAt ? (
+                      <span title={moment(b.lastLoginAt).format('DD/MM/YYYY HH:mm')} className="text-slate-500 dark:text-slate-400 cursor-help">
+                        {moment(b.lastLoginAt).fromNow()}
+                        <span className="block text-slate-300 dark:text-slate-600">({b.loginCount || 0} כניסות)</span>
+                      </span>
+                    ) : <span className="text-slate-300 dark:text-slate-600">אף פעם</span>}
+                  </td>
+                  <td className="p-4 text-center text-xs text-slate-400 hidden xl:table-cell">
                     {b.lastActivity ? moment(b.lastActivity).fromNow() : 'אין'}
                   </td>
                   <td className="p-4 text-center">

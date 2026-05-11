@@ -18,7 +18,8 @@
       "Bash(npx react-scripts build:*)",
       "Bash(config \")",
       "Bash(npx vite *)",
-      "mcp__context-brain__get_architecture"
+      "mcp__context-brain__get_architecture",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

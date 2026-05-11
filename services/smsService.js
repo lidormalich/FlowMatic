@@ -47,9 +47,11 @@ async function sendSMS(userId, phoneNumber, message) {
 
     // בדיקת תגובה מהשרת
     if (response.data && response.data.status === 'success') {
-      // משיכת credits מהמשתמש
-      user.credits -= SMS_COST;
-      await user.save();
+      await User.findByIdAndUpdate(userId, {
+        $inc: { credits: -SMS_COST, 'usageStats.smsSent': 1 },
+        $set: { 'usageStats.lastActionAt': new Date() }
+      });
+      user.credits -= SMS_COST; // keep local state for the log below
 
       console.log(`SMS sent successfully to ${cleanPhone}. User ${user.name} has ${user.credits} credits left.`);
       return response.data;
@@ -70,9 +72,13 @@ async function sendSMS(userId, phoneNumber, message) {
  */
 async function sendAppointmentConfirmationSMS(appointment, businessOwner) {
   const appointmentDate = moment(appointment.date).format('DD/MM/YYYY');
-  const cancelUrl = `${process.env.FRONTEND_URL}/cancel/${appointment._id}`;
+  const manageUrl = appointment.cancelToken
+    ? `${process.env.FRONTEND_URL}/manage-booking/${appointment.cancelToken}`
+    : null;
 
-  const message = `שלום ${appointment.customerName}, התור שלך ב-${businessOwner.businessName} אושר לתאריך ${appointmentDate} בשעה ${appointment.startTime}. לביטול: ${cancelUrl}`;
+  const message = manageUrl
+    ? `שלום ${appointment.customerName}, התור שלך ב-${businessOwner.businessName} אושר לתאריך ${appointmentDate} בשעה ${appointment.startTime}. לניהול התור (ביטול/שינוי): ${manageUrl}`
+    : `שלום ${appointment.customerName}, התור שלך ב-${businessOwner.businessName} אושר לתאריך ${appointmentDate} בשעה ${appointment.startTime}.`;
 
   try {
     await sendSMS(businessOwner._id, appointment.customerPhone, message);
@@ -96,9 +102,13 @@ async function sendAppointmentConfirmationSMS(appointment, businessOwner) {
  */
 async function sendAppointmentReminderSMS(appointment, businessOwner) {
   const appointmentDate = moment(appointment.date).format('DD/MM/YYYY');
-  const cancelUrl = `${process.env.FRONTEND_URL}/cancel/${appointment._id}`;
+  const manageUrl = appointment.cancelToken
+    ? `${process.env.FRONTEND_URL}/manage-booking/${appointment.cancelToken}`
+    : null;
 
-  const message = `תזכורת! יש לך תור מחר ב-${businessOwner.businessName} בתאריך ${appointmentDate} בשעה ${appointment.startTime}. לביטול: ${cancelUrl}`;
+  const message = manageUrl
+    ? `תזכורת! יש לך תור מחר ב-${businessOwner.businessName} בתאריך ${appointmentDate} בשעה ${appointment.startTime}. לניהול התור (ביטול/שינוי): ${manageUrl}`
+    : `תזכורת! יש לך תור מחר ב-${businessOwner.businessName} בתאריך ${appointmentDate} בשעה ${appointment.startTime}.`;
 
   try {
     await sendSMS(businessOwner._id, appointment.customerPhone, message);

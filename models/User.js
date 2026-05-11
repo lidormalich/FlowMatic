@@ -128,6 +128,21 @@ const UserSchema = new Schema({
         version: { type: String, default: null },
         ip: { type: String, default: '' }
     },
+    lastLoginAt: {
+        type: Date,
+        default: null
+    },
+    loginCount: {
+        type: Number,
+        default: 0
+    },
+    usageStats: {
+        appointmentsCreated: { type: Number, default: 0 },
+        appointmentsCancelled: { type: Number, default: 0 },
+        clientsAdded: { type: Number, default: 0 },
+        smsSent: { type: Number, default: 0 },
+        lastActionAt: { type: Date, default: null }
+    },
     date: {
         type: Date,
         default: Date.now

@@ -11,7 +11,9 @@ const validateLoginInput = require('../../validation/login');
 const validateUpdateUserInput = require('../../validation/updateUser');
 const User = require('../../models/User');
 const Event = require('../../models/Event');
+const AuditLog = require('../../models/AuditLog');
 const cloudinary = require('../../utils/cloudinary');
+const logger = require('../../utils/logger');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -555,54 +557,59 @@ router.post('/register', async (req, res) => {
     }
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
     const { errors, isValid } = validateLoginInput(req.body);
     if (!isValid) {
         return res.status(400).json(errors);
     }
-    const email = req.body.email;
-    const password = req.body.password;
-    User.findOne({ email }).then(user => {
-        console.log({user});
+    try {
+        const email = req.body.email;
+        const password = req.body.password;
+        const user = await User.findOne({ email });
         if (!user) {
             return res.status(404).json({ email: 'Email not found' });
         }
-        // Check if user is active and not suspended
         if (!user.isActive || user.isSuspended) {
             return res.status(403).json({ message: 'המשתמש מושעה או לא פעיל' });
         }
 
-        bcrypt.compare(password, user.password).then(isMatch => {
-            if (isMatch) {
-                const payload = {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    role: user.role,
-                    credits: user.credits
-                };
-                jwt.sign(
-                    payload,
-                    keys.secretOrKey,
-                    {
-                        expiresIn: 31556926 // 1 year in seconds
-                    },
-                    (err, token) => {
-                        res.json({
-                            success: true,
-                            token: 'Bearer ' + token,
-                            user: user.name
-                        });
-                    }
-                );
-            } else {
-                return res
-                    .status(400)
-                    .json({ password: 'Password incorrect' });
-            }
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ password: 'Password incorrect' });
+        }
+
+        // Track login stats
+        user.lastLoginAt = new Date();
+        user.loginCount = (user.loginCount || 0) + 1;
+        await user.save();
+
+        // Audit log
+        AuditLog.create({
+            userId: user._id,
+            action: 'login',
+            resource: 'auth',
+            details: { email: user.email },
+            ip: req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || '',
+            userAgent: req.headers['user-agent'] || ''
+        }).catch(err => logger.error('AuditLog write failed:', err));
+
+        const payload = {
+            id: user.id,
+            name: user.name,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            credits: user.credits
+        };
+
+        jwt.sign(payload, keys.secretOrKey, { expiresIn: 31556926 }, (err, token) => {
+            if (err) throw err;
+            res.json({ success: true, token: 'Bearer ' + token, user: user.name });
         });
-    });
+    } catch (err) {
+        logger.error('Login error:', err);
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
 });
 
 
@@ -678,7 +685,7 @@ router.get('/admin/stats', passport.authenticate('jwt', { session: false }), asy
 
     // All business owners
     const businesses = await User.find({ role: 'business_owner' })
-      .select('name email businessName createdAt isActive isSuspended credits themeSettings tos subscription')
+      .select('name email businessName createdAt isActive isSuspended credits themeSettings tos subscription lastLoginAt loginCount usageStats')
       .sort({ createdAt: -1 });
 
     const businessIds = businesses.map(b => b._id);
@@ -721,7 +728,10 @@ router.get('/admin/stats', passport.authenticate('jwt', { session: false }), asy
         uniqueClientsCount: stats.uniqueClients.length,
         lastActivity: stats.lastActivity,
         isInactive,
-        engagementRate
+        engagementRate,
+        loginCount: b.loginCount || 0,
+        lastLoginAt: b.lastLoginAt || null,
+        usageStats: b.usageStats || {}
       };
     });
 
@@ -798,6 +808,110 @@ router.get('/admin/stats', passport.authenticate('jwt', { session: false }), asy
     });
   } catch (err) {
     console.error('Admin stats error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// @route   GET api/users/admin/business/:id
+// @desc    Full business profile for admin — stats, recent appointments, audit trail, usage
+// @access  Private/Admin
+router.get('/admin/business/:id', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const mongoose = require('mongoose');
+    const businessId = mongoose.Types.ObjectId.isValid(req.params.id)
+      ? new mongoose.Types.ObjectId(req.params.id)
+      : null;
+    if (!businessId) return res.status(400).json({ message: 'מזהה לא תקין' });
+
+    const user = await User.findById(businessId).select('-password');
+    if (!user) return res.status(404).json({ message: 'עסק לא נמצא' });
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    const [appointmentStats, recentAppointments, auditLogs] = await Promise.all([
+      Event.aggregate([
+        { $match: { businessOwnerId: businessId } },
+        { $group: {
+          _id: null,
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+          noShow: { $sum: { $cond: [{ $eq: ['$status', 'no_show'] }, 1, 0] } },
+          revenue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$price', 0] } },
+          thisMonth: { $sum: { $cond: [{ $gte: ['$createdAt', startOfMonth] }, 1, 0] } },
+          lastMonth: { $sum: { $cond: [{ $and: [{ $gte: ['$createdAt', startOfLastMonth] }, { $lte: ['$createdAt', endOfLastMonth] }] }, 1, 0] } },
+          uniqueClients: { $addToSet: '$customerPhone' },
+          lastActivity: { $max: '$createdAt' }
+        }}
+      ]),
+      Event.find({ businessOwnerId: businessId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('customerName customerPhone date startTime endTime status price createdAt'),
+      AuditLog.find({ userId: businessId })
+        .sort({ timestamp: -1 })
+        .limit(50)
+        .select('action resource details ip userAgent timestamp')
+    ]);
+
+    const stats = appointmentStats[0] || { total: 0, completed: 0, cancelled: 0, noShow: 0, revenue: 0, thisMonth: 0, lastMonth: 0, uniqueClients: [], lastActivity: null };
+
+    res.json({
+      user,
+      stats: {
+        totalAppointments: stats.total,
+        completedAppointments: stats.completed,
+        cancelledAppointments: stats.cancelled,
+        noShowAppointments: stats.noShow,
+        totalRevenue: stats.revenue,
+        appointmentsThisMonth: stats.thisMonth,
+        appointmentsLastMonth: stats.lastMonth,
+        uniqueClientsCount: stats.uniqueClients.length,
+        lastActivity: stats.lastActivity,
+        loginCount: user.loginCount || 0,
+        lastLoginAt: user.lastLoginAt,
+        usageStats: user.usageStats
+      },
+      recentAppointments,
+      auditLogs
+    });
+  } catch (err) {
+    logger.error('Admin business detail error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// @route   POST api/users/admin/system-logs
+// @desc    Query system logs from MongoDB
+// @access  Private/Admin
+router.get('/admin/system-logs', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const mongoose = require('mongoose');
+    const db = mongoose.connection.db;
+    const collection = db.collection('system_logs');
+
+    const { level, limit = 100, skip = 0 } = req.query;
+    const filter = {};
+    if (level) filter.level = level;
+
+    const logs = await collection
+      .find(filter)
+      .sort({ timestamp: -1 })
+      .skip(parseInt(skip))
+      .limit(parseInt(limit))
+      .toArray();
+
+    const total = await collection.countDocuments(filter);
+    res.json({ logs, total });
+  } catch (err) {
+    logger.error('System logs query error:', err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
 });

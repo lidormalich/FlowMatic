@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const Client = require('../../models/Client');
 const Event = require('../../models/Event');
+const User = require('../../models/User');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -234,6 +235,12 @@ router.post('/', passport.authenticate('jwt', { session: false }), async (req, r
         });
 
         await client.save();
+
+        User.findByIdAndUpdate(req.user.id, {
+          $inc: { 'usageStats.clientsAdded': 1 },
+          $set: { 'usageStats.lastActionAt': new Date() }
+        }).catch(() => {});
+
         res.status(201).json(client);
     } catch (err) {
         console.error('Create client error:', err);

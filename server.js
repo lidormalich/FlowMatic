@@ -22,6 +22,8 @@ const inventory = require('./routes/api/inventory');
 const notifications = require('./routes/api/notifications');
 
 require('./config/passport')(passport);
+const auditLog = require('./middleware/auditLogger');
+const logger = require('./utils/logger');
 
 const app = express();
 
@@ -60,7 +62,7 @@ mongoose
     w: 'majority'
   })
   .then(() => {
-    console.log('MongoDB successfully connected.');
+    logger.info('MongoDB successfully connected.');
 
     // Start SMS reminder cron job
     const startSMSReminderJob = require('./jobs/smsReminders');
@@ -70,9 +72,10 @@ mongoose
     const startAppointmentReminderJob = require('./jobs/appointmentReminders');
     startAppointmentReminderJob();
   })
-  .catch(err => console.log(err));
+  .catch(err => logger.error('MongoDB connection error:', err));
 
 app.use(passport.initialize());
+app.use(auditLog);
 
 app.use('/api/users', users);
 app.use('/api/appointment-types', appointmentTypes);
@@ -94,4 +97,4 @@ app.get('*', function (req, res) {
 
 const port = process.env.PORT || 5000;
 
-app.listen(port, () => console.log(`Server up and running on port ${port} !`));
+app.listen(port, () => logger.info(`Server up and running on port ${port}`));
