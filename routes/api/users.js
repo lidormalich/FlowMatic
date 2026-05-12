@@ -776,8 +776,24 @@ router.get('/admin/stats', passport.authenticate('jwt', { session: false }), asy
     const noShowRate = g.totalAppointments > 0 ? Math.round((g.totalNoShow / g.totalAppointments) * 100) : 0;
     const cancellationRate = g.totalAppointments > 0 ? Math.round((g.totalCancelled / g.totalAppointments) * 100) : 0;
 
+    // Client score stats across platform
+    const Client = require('../../models/Client');
+    const clientScoreAgg = await Client.aggregate([
+      { $group: {
+        _id: null,
+        total:    { $sum: 1 },
+        flagged:  { $sum: { $cond: [{ $lt:  ['$score', 40] }, 1, 0] } },
+        priority: { $sum: { $cond: [{ $gte: ['$score', 75] }, 1, 0] } },
+        avgScore: { $avg: { $ifNull: ['$score', 70] } }
+      }}
+    ]);
+    const clientScores = clientScoreAgg[0]
+      ? { ...clientScoreAgg[0], _id: undefined, avgScore: Math.round(clientScoreAgg[0].avgScore) }
+      : { total: 0, flagged: 0, priority: 0, avgScore: 70 };
+
     res.json({
       businesses: businessesWithStats,
+      clientScores,
       totals: {
         businesses: businesses.length,
         activeBusinesses: activeBusinesses.length,
@@ -894,24 +910,189 @@ router.get('/admin/system-logs', passport.authenticate('jwt', { session: false }
     if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
 
     const mongoose = require('mongoose');
-    const db = mongoose.connection.db;
-    const collection = db.collection('system_logs');
+    const collection = mongoose.connection.db.collection('system_logs');
 
-    const { level, limit = 100, skip = 0 } = req.query;
+    const { level, search, startDate, endDate, limit = 50, skip = 0 } = req.query;
     const filter = {};
-    if (level) filter.level = level;
+    if (level && level !== 'all') filter.level = level;
+    if (search) filter.message = { $regex: search, $options: 'i' };
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.timestamp.$lte = end;
+      }
+    }
 
-    const logs = await collection
-      .find(filter)
-      .sort({ timestamp: -1 })
-      .skip(parseInt(skip))
-      .limit(parseInt(limit))
-      .toArray();
+    const [logs, total] = await Promise.all([
+      collection.find(filter).sort({ timestamp: -1 }).skip(parseInt(skip)).limit(parseInt(limit)).toArray(),
+      collection.countDocuments(filter)
+    ]);
 
-    const total = await collection.countDocuments(filter);
     res.json({ logs, total });
   } catch (err) {
     logger.error('System logs query error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// @route   GET api/users/admin/audit-logs
+// @desc    Query audit logs with filtering by user, action, resource, date range
+// @access  Private/Admin
+router.get('/admin/audit-logs', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const mongoose = require('mongoose');
+    const { userId, search, startDate, endDate, limit = 50, skip = 0 } = req.query;
+
+    const filter = {};
+    if (userId) {
+      try { filter.userId = new mongoose.Types.ObjectId(userId); } catch (_) {}
+    }
+    if (search) {
+      filter.$or = [
+        { action:   { $regex: search, $options: 'i' } },
+        { resource: { $regex: search, $options: 'i' } },
+      ];
+    }
+    if (startDate || endDate) {
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.timestamp.$lte = end;
+      }
+    }
+
+    const [logs, total, users] = await Promise.all([
+      AuditLog.find(filter)
+        .populate('userId', 'name email businessName')
+        .sort({ timestamp: -1 })
+        .skip(parseInt(skip))
+        .limit(parseInt(limit))
+        .lean(),
+      AuditLog.countDocuments(filter),
+      User.find({ role: { $in: ['business_owner', 'admin'] } })
+        .select('_id name email businessName')
+        .sort({ businessName: 1 })
+        .lean(),
+    ]);
+
+    res.json({ logs, total, users });
+  } catch (err) {
+    logger.error('Audit logs query error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// @route   GET api/users/admin/platform-timeline
+// @desc    12-month rolling aggregate: appointments + revenue per month
+// @access  Private/Admin
+router.get('/admin/platform-timeline', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const now = new Date();
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    const raw = await Event.aggregate([
+      { $match: { createdAt: { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' } },
+          appointments: { $sum: 1 },
+          revenue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$price', 0] } }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    const monthMap = {};
+    raw.forEach(r => { monthMap[`${r._id.year}-${r._id.month}`] = r; });
+
+    const HE_MONTHS = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1);
+      const yr = d.getFullYear();
+      const mo = d.getMonth() + 1;
+      const key = `${yr}-${mo}`;
+      const data = monthMap[key] || { appointments: 0, revenue: 0 };
+      return {
+        label: `${HE_MONTHS[mo - 1]} ${yr}`,
+        shortLabel: HE_MONTHS[mo - 1],
+        year: yr,
+        month: mo,
+        appointments: data.appointments,
+        revenue: data.revenue
+      };
+    });
+
+    res.json({ months });
+  } catch (err) {
+    logger.error('Platform timeline error:', err);
+    res.status(500).json({ message: 'שגיאת שרת' });
+  }
+});
+
+// @route   GET api/users/admin/export/businesses
+// @desc    Export all businesses as CSV (UTF-8 BOM for Hebrew)
+// @access  Private/Admin
+router.get('/admin/export/businesses', passport.authenticate('jwt', { session: false }), async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+
+    const businesses = await User.find({ role: 'business_owner' })
+      .select('name email businessName createdAt credits tos lastLoginAt isActive isSuspended')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const businessIds = businesses.map(b => b._id);
+    const appointmentStats = await Event.aggregate([
+      { $match: { businessOwnerId: { $in: businessIds } } },
+      { $group: {
+        _id: '$businessOwnerId',
+        total: { $sum: 1 },
+        revenue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$price', 0] } }
+      }}
+    ]);
+    const statsMap = {};
+    appointmentStats.forEach(s => { statsMap[s._id.toString()] = s; });
+
+    const esc = v => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const header = ['שם', 'שם עסק', 'אימייל', 'נרשם', 'קרדיטים SMS', 'תנאי שימוש', 'כניסה אחרונה', 'תורים', 'הכנסות', 'סטטוס'];
+    const rows = businesses.map(b => {
+      const stats = statsMap[b._id.toString()] || { total: 0, revenue: 0 };
+      const status = b.isSuspended ? 'מושעה' : b.isActive ? 'פעיל' : 'לא פעיל';
+      return [
+        esc(b.name),
+        esc(b.businessName),
+        esc(b.email),
+        esc(b.createdAt ? new Date(b.createdAt).toLocaleDateString('he-IL') : ''),
+        esc(b.credits || 0),
+        esc(b.tos?.agreedAt ? 'כן' : 'לא'),
+        esc(b.lastLoginAt ? new Date(b.lastLoginAt).toLocaleDateString('he-IL') : ''),
+        esc(stats.total),
+        esc(stats.revenue),
+        esc(status)
+      ].join(',');
+    });
+
+    const csv = '﻿' + [header.join(','), ...rows].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="businesses_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    logger.error('Export businesses error:', err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
 });
