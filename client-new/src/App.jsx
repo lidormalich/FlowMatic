@@ -67,7 +67,14 @@ function AppContent() {
                 </PrivateRoute>
               }
             />
-            <Route path="/AppointmentScheduler" element={<AppointmentScheduler />} />
+            <Route
+              path="/AppointmentScheduler"
+              element={
+                <PrivateRoute>
+                  <AppointmentScheduler />
+                </PrivateRoute>
+              }
+            />
             <Route path="/book/:username" element={<PublicBooking />} />
             <Route path="/manage-booking/:token" element={<ManageBooking />} />
             <Route path="/terms" element={<TermsOfService />} />

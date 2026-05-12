@@ -47,6 +47,30 @@ const ClientSchema = new Schema({
         type: Date,
         default: null
     },
+    score: {
+        type: Number,
+        default: 70,
+        min: 0,
+        max: 100
+    },
+    noShowCount: {
+        type: Number,
+        default: 0
+    },
+    lateCancellationCount: {
+        type: Number,
+        default: 0
+    },
+    completedCount: {
+        type: Number,
+        default: 0
+    },
+    scoreEvents: [{
+        event: { type: String },
+        delta: { type: Number },
+        date: { type: Date, default: Date.now },
+        appointmentId: { type: Schema.Types.ObjectId, ref: 'Event' }
+    }],
     createdAt: {
         type: Date,
         default: Date.now

@@ -24,6 +24,26 @@ const Clients = () => {
         tags: []
     });
 
+    const getScoreBadge = (score) => {
+        if (score == null) return null;
+        const s = Math.round(score);
+        if (s >= 75) return (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" title="לקוח מצוין – עדיפות גבוהה">
+                ★ {s}
+            </span>
+        );
+        if (s >= 40) return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" title="לקוח רגיל">
+                {s}
+            </span>
+        );
+        return (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400" title="לקוח בעייתי – ביטולים / אי-הגעות">
+                ⚠ {s}
+            </span>
+        );
+    };
+
     const PREDEFINED_TAGS = [
         { label: 'VIP', icon: '👑' },
         { label: 'מאחר כרוני', icon: '⏰' },
@@ -324,6 +344,7 @@ const Clients = () => {
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <h3 className="font-bold text-slate-900 dark:text-white truncate">{client.name}</h3>
+                                                    {getScoreBadge(client.score)}
                                                     {client.isBlocked && (
                                                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-900/20 text-red-600">חסום</span>
                                                     )}
@@ -384,6 +405,7 @@ const Clients = () => {
                                                 <td className="px-6 py-3.5">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-semibold text-slate-900 dark:text-white">{client.name}</span>
+                                                        {getScoreBadge(client.score)}
                                                         {client.isBlocked && (
                                                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400">חסום</span>
                                                         )}
@@ -573,7 +595,19 @@ const Clients = () => {
 
                             <div className="px-6 pb-6 overflow-y-auto flex-1">
                                 {/* Stats */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                                    <div className={`p-4 rounded-2xl text-center ${
+                                        selectedClientHistory.score >= 75 ? 'bg-emerald-50 dark:bg-emerald-900/20' :
+                                        selectedClientHistory.score >= 40 ? 'bg-amber-50 dark:bg-amber-900/20' :
+                                        'bg-red-50 dark:bg-red-900/20'
+                                    }`}>
+                                        <p className={`text-2xl font-bold ${
+                                            selectedClientHistory.score >= 75 ? 'text-emerald-600 dark:text-emerald-400' :
+                                            selectedClientHistory.score >= 40 ? 'text-amber-600 dark:text-amber-400' :
+                                            'text-red-600 dark:text-red-400'
+                                        }`}>{selectedClientHistory.score ?? 70}</p>
+                                        <p className="text-[11px] font-semibold mt-0.5 text-slate-500">ציון לקוח</p>
+                                    </div>
                                     <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl text-center">
                                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{selectedClientHistory.stats?.total || 0}</p>
                                         <p className="text-[11px] text-blue-700 dark:text-blue-300 font-semibold mt-0.5">סה״כ תורים</p>

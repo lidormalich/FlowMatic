@@ -19,7 +19,11 @@
       "Bash(config \")",
       "Bash(npx vite *)",
       "mcp__context-brain__get_architecture",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\lidor\\\\Documents\\\\GitHub\\\\FlowMatic\" -Force)",
+      "Bash(Select-Object Name, FullName)"
     ]
   }
 }

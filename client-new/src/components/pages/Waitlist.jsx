@@ -4,6 +4,26 @@ import { waitlistApi } from '../../services/api';
 import SkeletonLoader from '../common/SkeletonLoader';
 import moment from 'moment';
 
+const ScoreBadge = ({ score, noShows }) => {
+    if (score == null) return <span className="text-xs text-slate-400">-</span>;
+    const s = Math.round(score);
+    if (s >= 75) return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700" title="לקוח מצוין – עדיפות גבוהה">
+            ★ {s}
+        </span>
+    );
+    if (s >= 40) return (
+        <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700" title="לקוח רגיל">
+            {s}
+        </span>
+    );
+    return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700" title={`לקוח בעייתי${noShows ? ` – ${noShows} אי-הגעות` : ''}`}>
+            ⚠ {s}
+        </span>
+    );
+};
+
 const Waitlist = () => {
     const [waitlist, setWaitlist] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -92,6 +112,7 @@ const Waitlist = () => {
                             <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
                                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">לקוח</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider" title="ציון איכות לקוח – ממוין מגבוה לנמוך">ציון ↓</th>
                                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">שירות מבוקש</th>
                                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">תאריך מבוקש</th>
                                     <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">הערות</th>
@@ -106,6 +127,9 @@ const Waitlist = () => {
                                             <div className="text-sm font-medium text-gray-900">{item.clientName}</div>
                                             <div className="text-sm text-gray-500">{item.clientPhone}</div>
                                             {item.clientEmail && <div className="text-xs text-gray-400">{item.clientEmail}</div>}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-center">
+                                            <ScoreBadge score={item.clientScore} noShows={item.clientNoShows} />
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm text-gray-900">{item.serviceId?.name || 'לא צוין'}</div>

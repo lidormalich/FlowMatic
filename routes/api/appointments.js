@@ -595,6 +595,8 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
       return res.status(404).json({ message: 'תור לא נמצא' });
     }
 
+    const prevStatus = appointment.status;
+
     // Update allowed fields
     const { status, customerName, customerPhone, customerEmail, date, startTime, endTime, duration, description } = req.body;
 
@@ -622,6 +624,39 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
 
     const oldStatus = appointment.status;
     await appointment.save();
+
+    // Update client score on status change
+    if (status && status !== prevStatus) {
+      try {
+        const scoreEngine = require('../../utils/scoreEngine');
+        let scoreEventType = null;
+        if (status === 'no_show') {
+          scoreEventType = 'no_show';
+        } else if (status === 'cancelled') {
+          const hoursUntil = moment(appointment.date).diff(moment(), 'hours');
+          scoreEventType = hoursUntil < 24 ? 'late_cancellation' : 'cancellation';
+        } else if (status === 'completed') {
+          scoreEventType = 'completed';
+        }
+        if (scoreEventType) {
+          const client = await Client.findOne({
+            businessOwnerId: appointment.businessOwnerId,
+            phone: appointment.customerPhone
+          });
+          if (client) {
+            const { newScore, delta } = scoreEngine.applyDelta(client.score ?? 70, scoreEventType);
+            client.score = newScore;
+            if (scoreEventType === 'no_show') client.noShowCount = (client.noShowCount || 0) + 1;
+            if (scoreEventType === 'late_cancellation') client.lateCancellationCount = (client.lateCancellationCount || 0) + 1;
+            if (scoreEventType === 'completed') client.completedCount = (client.completedCount || 0) + 1;
+            client.scoreEvents.push({ event: scoreEventType, delta, date: new Date(), appointmentId: appointment._id });
+            await client.save();
+          }
+        }
+      } catch (scoreErr) {
+        console.error('Score update failed:', scoreErr.message);
+      }
+    }
 
     // Send notification + push on status change
     if (status && status !== oldStatus && appointment.customerId) {

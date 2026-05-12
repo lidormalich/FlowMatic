@@ -3,14 +3,43 @@ const router = express.Router();
 const passport = require('passport');
 const Waitlist = require('../../models/Waitlist');
 const AppointmentType = require('../../models/AppointmentType');
+const Client = require('../../models/Client');
+const { getScoreTier } = require('../../utils/scoreEngine');
+
+const STATUS_ORDER = { pending: 0, notified: 1, booked: 2, cancelled: 3 };
 
 // GET /api/waitlist - Get all waitlist items for business owner
 router.get('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
     try {
         const items = await Waitlist.find({ businessOwnerId: req.user.id })
             .populate('serviceId', 'name duration price color')
-            .sort({ createdAt: -1 });
-        res.json(items);
+            .lean();
+
+        // Enrich with client scores
+        const phones = [...new Set(items.map(i => i.clientPhone).filter(Boolean))];
+        const clientDocs = await Client.find({ businessOwnerId: req.user.id, phone: { $in: phones } })
+            .select('phone score noShowCount lateCancellationCount');
+        const scoreMap = Object.fromEntries(clientDocs.map(c => [c.phone, c]));
+
+        const enriched = items.map(item => {
+            const clientData = scoreMap[item.clientPhone];
+            const score = clientData ? (clientData.score ?? 70) : null;
+            return {
+                ...item,
+                clientScore: score,
+                clientScoreTier: score != null ? getScoreTier(score) : null,
+                clientNoShows: clientData?.noShowCount ?? 0
+            };
+        });
+
+        // Sort: by status group first, then by score desc within same group
+        enriched.sort((a, b) => {
+            const statusDiff = (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4);
+            if (statusDiff !== 0) return statusDiff;
+            return (b.clientScore ?? 70) - (a.clientScore ?? 70);
+        });
+
+        res.json(enriched);
     } catch (err) {
         res.status(500).json({ message: 'Error fetching waitlist' });
     }

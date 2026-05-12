@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../services/api';
 import { toast } from 'react-toastify';
 import moment from 'moment';
 import 'moment/locale/he';
@@ -98,7 +98,7 @@ const PublicBooking = () => {
 
   const fetchBusinessOwner = async () => {
     try {
-      const userRes = await axios.get(`/api/users/public/${username}`);
+      const userRes = await api.get(`/users/public/${username}`);
       const owner = userRes.data;
       setBusinessOwner(owner);
 
@@ -107,11 +107,11 @@ const PublicBooking = () => {
         document.documentElement.style.setProperty('--secondary-color', owner.themeSettings.secondaryColor || '#a855f7');
       }
 
-      const typesRes = await axios.get(`/api/appointment-types/user/${username}`);
+      const typesRes = await api.get(`/appointment-types/user/${username}`);
       setAppointmentTypes(typesRes.data);
 
       try {
-        const staffRes = await axios.get(`/api/staff/public/${username}`);
+        const staffRes = await api.get(`/staff/public/${username}`);
         setStaffMembers(staffRes.data || []);
       } catch (e) { /* Staff endpoint may not exist yet */ }
 
@@ -130,7 +130,7 @@ const PublicBooking = () => {
         duration: getTotalDuration() || selectedType?.duration || 60,
       };
       if (selectedStaff) params.staffId = selectedStaff._id;
-      const res = await axios.get(`/api/appointments/available/${username}`, { params });
+      const res = await api.get(`/appointments/available/${username}`, { params });
       setAvailableTimes(res.data.times || []);
     } catch (err) {
       setAvailableTimes([]);
@@ -238,7 +238,7 @@ const PublicBooking = () => {
         staffId: selectedStaff?._id || null,
       };
 
-      await axios.post(`/api/appointments/public/${username}`, appointmentData);
+      await api.post(`/appointments/public/${username}`, appointmentData);
       // Prompt push notifications after successful booking
       localStorage.removeItem('pushBannerDismissed');
       setStep(4);
