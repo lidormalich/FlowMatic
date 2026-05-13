@@ -25,6 +25,12 @@
   box-sizing: border-box;
 }
 
+@layer base {
+  body {
+    @apply overflow-x-hidden;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -88,26 +94,19 @@ html.dark body {
   }
 
   .glass-input {
-    @apply h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900
-           placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500
-           focus:bg-white transition-all duration-200;
+    @apply h-12 bg-slate-100 border-0 rounded-2xl px-4 text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all duration-200;
   }
 
   .btn-primary {
-    @apply bg-blue-600 text-white font-semibold rounded-full px-6 py-3
-           shadow-lg shadow-blue-500/30 hover:bg-blue-500 active:scale-95
-           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-           disabled:active:scale-100;
+    @apply bg-blue-600 text-white font-semibold rounded-full px-6 py-3 shadow-lg shadow-blue-500/30 hover:bg-blue-500 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
 
   .btn-secondary {
-    @apply bg-slate-100 text-slate-700 font-semibold rounded-full px-6 py-3
-           hover:bg-slate-200 active:scale-95 transition-all duration-200;
+    @apply bg-slate-100 text-slate-700 font-semibold rounded-full px-6 py-3 hover:bg-slate-200 active:scale-95 transition-all duration-200;
   }
 
   .btn-ghost {
-    @apply bg-transparent text-slate-600 font-medium rounded-full px-4 py-2
-           hover:bg-slate-100 active:scale-95 transition-all duration-200;
+    @apply bg-transparent text-slate-600 font-medium rounded-full px-4 py-2 hover:bg-slate-100 active:scale-95 transition-all duration-200;
   }
 
   /* Bento Grid for Dashboard */
@@ -117,8 +116,7 @@ html.dark body {
   }
 
   .bento-card {
-    @apply glass-card p-6 hover:shadow-lg hover:-translate-y-1
-           transition-all duration-300 cursor-pointer;
+    @apply glass-card p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-pointer;
   }
 
   .bento-card-lg {
@@ -170,8 +168,7 @@ html.dark body {
 
   /* Mobile bottom nav */
   .mobile-nav {
-    @apply fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg
-           border-t border-slate-200/50 px-6 py-3 z-50 md:hidden;
+    @apply fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-slate-200/50 px-6 py-3 z-50 md:hidden;
   }
 
   /* Stats card for dashboard */
@@ -237,6 +234,7 @@ html.dark body {
       opacity: 0;
       transform: translateY(20px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -252,6 +250,7 @@ html.dark body {
       opacity: 0;
       transform: scale(0.95);
     }
+
     to {
       opacity: 1;
       transform: scale(1);
@@ -305,6 +304,7 @@ html.dark body {
 html.dark ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
 }
+
 html.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
 }
@@ -339,6 +339,7 @@ html.dark .glass-input {
   color: #e2e8f0;
   border-color: rgba(255, 255, 255, 0.1);
 }
+
 html.dark .glass-input::placeholder {
   color: #64748b;
 }
@@ -352,6 +353,7 @@ html.dark .btn-secondary {
   background: #1e293b;
   color: #e2e8f0;
 }
+
 html.dark .btn-secondary:hover {
   background: #334155;
 }
@@ -359,23 +361,48 @@ html.dark .btn-secondary:hover {
 html.dark .btn-ghost {
   color: #94a3b8;
 }
+
 html.dark .btn-ghost:hover {
   background: #1e293b;
 }
 
 /* Badges dark */
-html.dark .badge-blue { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
-html.dark .badge-green { background: rgba(34, 197, 94, 0.2); color: #86efac; }
-html.dark .badge-yellow { background: rgba(234, 179, 8, 0.2); color: #fde047; }
-html.dark .badge-red { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-html.dark .badge-purple { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
-html.dark .badge-gray { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+html.dark .badge-blue {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+html.dark .badge-green {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+html.dark .badge-yellow {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+}
+
+html.dark .badge-red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+html.dark .badge-purple {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+}
+
+html.dark .badge-gray {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
 
 /* Bento cards dark */
 html.dark .bento-card {
   background: rgba(30, 41, 59, 0.8);
   border-color: rgba(255, 255, 255, 0.08);
 }
+
 html.dark .bento-card:hover {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
@@ -385,27 +412,55 @@ html.dark .stats-card {
   background: rgba(30, 41, 59, 0.8);
   border-color: rgba(255, 255, 255, 0.08);
 }
-html.dark .stats-value { color: #f1f5f9; }
-html.dark .stats-label { color: #94a3b8; }
+
+html.dark .stats-value {
+  color: #f1f5f9;
+}
+
+html.dark .stats-label {
+  color: #94a3b8;
+}
 
 /* Section titles dark */
-html.dark .section-title { color: #f1f5f9; }
-html.dark .section-subtitle { color: #94a3b8; }
+html.dark .section-title {
+  color: #f1f5f9;
+}
+
+html.dark .section-subtitle {
+  color: #94a3b8;
+}
 
 /* Table dark */
-html.dark .ios-table thead { background: rgba(30, 41, 59, 0.8); }
-html.dark .ios-table th { color: #94a3b8; }
-html.dark .ios-table tbody tr { border-color: rgba(255, 255, 255, 0.06); }
-html.dark .ios-table tbody tr:hover { background: rgba(30, 41, 59, 0.5); }
+html.dark .ios-table thead {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+html.dark .ios-table th {
+  color: #94a3b8;
+}
+
+html.dark .ios-table tbody tr {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+html.dark .ios-table tbody tr:hover {
+  background: rgba(30, 41, 59, 0.5);
+}
 
 /* Form dark */
-html.dark .form-label { color: #cbd5e1; }
+html.dark .form-label {
+  color: #cbd5e1;
+}
 
 /* Action button dark */
-html.dark .action-btn:hover { background: #1e293b; }
+html.dark .action-btn:hover {
+  background: #1e293b;
+}
 
 /* Sheet handle dark */
-html.dark .sheet-handle { background: #475569; }
+html.dark .sheet-handle {
+  background: #475569;
+}
 
 /* Mobile nav dark */
 html.dark .mobile-nav {
@@ -417,46 +472,58 @@ html.dark .mobile-nav {
 html.dark .rbc-calendar {
   color: #e2e8f0;
 }
+
 html.dark .rbc-toolbar button {
   color: #cbd5e1;
   border-color: rgba(255, 255, 255, 0.1);
 }
+
 html.dark .rbc-toolbar button:hover {
   background-color: #1e293b;
 }
+
 html.dark .rbc-toolbar button.rbc-active {
   background-color: #3b82f6 !important;
   color: white !important;
 }
+
 html.dark .rbc-header {
   color: #94a3b8;
   border-color: rgba(255, 255, 255, 0.06);
 }
+
 html.dark .rbc-today {
   background-color: rgba(59, 130, 246, 0.15) !important;
 }
+
 html.dark .rbc-off-range-bg {
   background-color: rgba(15, 23, 42, 0.5);
 }
+
 html.dark .rbc-month-view,
 html.dark .rbc-time-view,
 html.dark .rbc-agenda-view {
   border-color: rgba(255, 255, 255, 0.06);
 }
-html.dark .rbc-month-row + .rbc-month-row,
-html.dark .rbc-day-bg + .rbc-day-bg,
-html.dark .rbc-header + .rbc-header {
+
+html.dark .rbc-month-row+.rbc-month-row,
+html.dark .rbc-day-bg+.rbc-day-bg,
+html.dark .rbc-header+.rbc-header {
   border-color: rgba(255, 255, 255, 0.06);
 }
-html.dark .rbc-time-content > * + * > * {
+
+html.dark .rbc-time-content>*+*>* {
   border-color: rgba(255, 255, 255, 0.06);
 }
+
 html.dark .rbc-timeslot-group {
   border-color: rgba(255, 255, 255, 0.06);
 }
+
 html.dark .rbc-time-header-content {
   border-color: rgba(255, 255, 255, 0.06);
 }
+
 html.dark .rbc-day-slot .rbc-time-slot {
   border-color: rgba(255, 255, 255, 0.04);
 }
