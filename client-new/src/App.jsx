@@ -31,6 +31,7 @@ import Inventory from './components/pages/Inventory';
 import Templates from './components/pages/Templates';
 import MyAppointments from './components/pages/MyAppointments';
 import NotificationCenter from './components/pages/NotificationCenter';
+import NotificationHistory from './components/pages/NotificationHistory';
 import ManageBooking from './components/pages/ManageBooking';
 import AdminDashboard from './components/pages/AdminDashboard';
 import TermsOfService from './components/pages/TermsOfService';
@@ -173,6 +174,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <MyAppointments />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <PrivateRoute>
+                  <NotificationHistory />
                 </PrivateRoute>
               }
             />

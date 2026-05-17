@@ -23,7 +23,15 @@
       "Bash(git add *)",
       "Bash(git push *)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\lidor\\\\Documents\\\\GitHub\\\\FlowMatic\" -Force)",
-      "Bash(Select-Object Name, FullName)"
+      "Bash(Select-Object Name, FullName)",
+      "mcp__context-brain__save_memory",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\lidor\\\\Documents\\\\ProjInfo\\\\FlowMatic\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"Directory created\")",
+      "Bash(mkdir -p \"/mnt/c/Users/lidor/Documents/ProjInfo/FlowMatic\" && echo \"Directory created\")"
+    ],
+    "additionalDirectories": [
+      "\\mnt\\c\\Users\\lidor\\Documents\\ProjInfo"
     ]
   }
 }

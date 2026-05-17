@@ -71,6 +71,13 @@ const UserSchema = new Schema({
         enabled: { type: Boolean, default: true },
         reminderHoursBefore: { type: Number, default: 24 }
     },
+    pushNotificationPreferences: {
+        enabled: { type: Boolean, default: true },
+        reminders: { type: Boolean, default: true },
+        confirmations: { type: Boolean, default: true },
+        cancellations: { type: Boolean, default: true },
+        reschedules: { type: Boolean, default: true }
+    },
     profileImage: {
         type: String,
         default: ''

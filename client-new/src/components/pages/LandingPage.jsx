@@ -1,6 +1,72 @@
 import { Link } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 
+function EInkDisplay() {
+  const apts = [
+    { time: '11:30', name: 'שירה לוי', service: 'צביעה', status: 'active' },
+    { time: '13:00', name: 'דנה משה', service: 'קרטין', status: 'next' },
+    { time: '14:30', name: 'יוסי כהן', service: 'תספורת', status: 'upcoming' },
+  ];
+
+  return (
+    <div style={{
+      background: '#ebe9e0',
+      borderRadius: '14px',
+      border: '3px solid #444',
+      padding: '18px 20px',
+      fontFamily: "'Courier New', Courier, monospace",
+      boxShadow: '6px 6px 0px #999, 0 10px 40px rgba(0,0,0,0.2)',
+      maxWidth: '360px',
+      width: '100%',
+      direction: 'rtl',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #888', paddingBottom: '10px', marginBottom: '12px' }}>
+        <div style={{ fontWeight: 'bold', fontSize: '13px', letterSpacing: '0.05em', color: '#111' }}>
+          ✦ FlowMatic
+        </div>
+        <div style={{ fontSize: '11px', color: '#555' }}>יום ג׳ · 11:47</div>
+      </div>
+
+      {/* Active now */}
+      <div style={{ background: '#111', color: '#ebe9e0', borderRadius: '8px', padding: '12px 14px', marginBottom: '12px' }}>
+        <div style={{ fontSize: '10px', letterSpacing: '0.08em', marginBottom: '4px', opacity: 0.7 }}>כרגע בטיפול</div>
+        <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '6px' }}>שירה לוי — צביעה</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '11px', opacity: 0.75 }}>התחלה: 11:30</div>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', background: '#ebe9e0', color: '#111', padding: '2px 8px', borderRadius: '20px' }}>
+            עוד ~45 דק׳
+          </div>
+        </div>
+      </div>
+
+      {/* Queue */}
+      <div style={{ fontSize: '10px', fontWeight: 'bold', letterSpacing: '0.06em', color: '#555', marginBottom: '7px' }}>
+        הבאים בתור
+      </div>
+      {apts.slice(1).map((apt) => (
+        <div key={apt.time} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '7px 10px', marginBottom: '5px', borderRadius: '6px',
+          background: apt.status === 'next' ? '#d0cfc5' : '#f0efe7',
+          border: `1px solid ${apt.status === 'next' ? '#888' : '#ccc'}`,
+        }}>
+          <div style={{ fontWeight: apt.status === 'next' ? 'bold' : 'normal', fontSize: '12px', color: '#111' }}>
+            {apt.time} · {apt.name}
+          </div>
+          <div style={{ fontSize: '10px', color: '#666' }}>{apt.service}</div>
+        </div>
+      ))}
+
+      {/* Footer */}
+      <div style={{ marginTop: '12px', paddingTop: '9px', borderTop: '1px solid #aaa', display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#666' }}>
+        <span>סלון שירה ✂</span>
+        <span>● מחובר · 🔋 87%</span>
+      </div>
+    </div>
+  );
+}
+
 const FEATURES = [
   { icon: '📅', title: 'ניהול תורים', desc: 'לוח שנה חכם עם תמיכה בתאריכים עבריים, שעות עבודה ואירועים מרובים בו זמנית.' },
   { icon: '👥', title: 'ניהול לקוחות', desc: 'כרטסת לקוחות מלאה עם היסטוריית ביקורים, מידע ליצירת קשר ותגיות חכמות.' },
@@ -100,13 +166,13 @@ function LandingPage() {
           {/* Badge */}
           <div className={`inline-flex items-center gap-2 border ${border} rounded-full px-4 py-2 text-sm font-medium mb-8 ${muted}`}>
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
-            מערכת ניהול עסקים חכמה לישראל
+            מערכת ניהול תורים חכמה
           </div>
 
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-black leading-tight mb-6 tracking-tight">
-            נהל את העסק שלך
+            תורים בלי עומס,
             <br />
-            <span className="text-blue-600 dark:text-blue-400">בחכמה יותר</span>
+            <span className="text-blue-600 dark:text-blue-400">עסק שרץ לבד</span>
           </h1>
 
           <p className={`text-xl md:text-2xl ${muted} max-w-2xl mx-auto mb-12 leading-relaxed`}>
@@ -182,6 +248,58 @@ function LandingPage() {
                 <p className={`text-sm leading-relaxed ${muted}`}>{f.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── E-Ink Display ─────────────────────────────────────── */}
+      <section className={`${surface} py-24 border-y ${border}`}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+            {/* Text */}
+            <div>
+              <span className="inline-block text-xs font-bold uppercase tracking-widest text-cyan-500 bg-cyan-500/10 px-3 py-1.5 rounded-full mb-5">
+                חדש · פרמיום
+              </span>
+              <h2 className="text-4xl font-black mb-5 leading-tight">
+                מסך E-Ink חכם
+                <br />
+                <span className={muted}>לדלת הקליניקה שלך</span>
+              </h2>
+              <p className={`text-base leading-relaxed ${muted} mb-8`}>
+                מסך E-Ink אלחוטי שמסתנכרן אוטומטית עם FlowMatic —
+                מציג בזמן אמת מי בטיפול, כמה זמן נשאר והבא בתור.
+                ללא חיווט, ללא הגדרה מסובכת, חיי סוללה של חודשים.
+              </p>
+              <div className="space-y-4 mb-8">
+                {[
+                  { icon: '⚡', text: 'סנכרון אוטומטי עם לוח התורים' },
+                  { icon: '🔋', text: 'חיי סוללה של חודשים — E-Ink לא צורך חשמל בתצוגה סטטית' },
+                  { icon: '📶', text: 'אלחוטי — נתלה בכניסה, מעל הדלפק, בחדר המתנה' },
+                  { icon: '🎨', text: 'לוגו ושם העסק על המסך' },
+                ].map((item) => (
+                  <div key={item.text} className="flex items-start gap-3">
+                    <span className="text-xl shrink-0">{item.icon}</span>
+                    <span className={`text-sm leading-relaxed ${muted}`}>{item.text}</span>
+                  </div>
+                ))}
+              </div>
+              <div className={`inline-flex items-center gap-2 border ${border} rounded-xl px-4 py-2.5 text-sm font-medium ${muted}`}>
+                <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                בקרוב · השאר פרטים ונעדכן אותך
+              </div>
+            </div>
+
+            {/* Mockup */}
+            <div className="flex justify-center">
+              <div className="relative">
+                {/* Glow */}
+                <div className="absolute inset-0 blur-3xl bg-cyan-400/10 rounded-full scale-110" />
+                <EInkDisplay />
+                {/* Label */}
+                <p className={`text-center text-xs mt-4 ${muted}`}>הדמיה · המסך האמיתי עשוי להיות שונה</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>

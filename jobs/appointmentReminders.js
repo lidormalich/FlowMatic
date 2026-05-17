@@ -2,13 +2,16 @@ const cron = require('node-cron');
 const moment = require('moment');
 const Event = require('../models/Event');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { sendPushToUser } = require('../utils/pushNotify');
+const { getSystemConfig } = require('../utils/systemConfig');
 
 /**
- * Send in-app notification + browser push to a user
+ * Send in-app notification + browser push to a user.
+ * If notifType is provided, checks the user's pushNotificationPreferences before sending push.
  */
-async function notifyUser(userId, { type, title, body, url, appointmentId }) {
-    // In-app notification
+async function notifyUser(userId, { type, title, body, url, appointmentId, notifType }) {
+    // In-app notification (always saved regardless of push prefs)
     await Notification.create({
         userId,
         type: type || 'reminder',
@@ -17,7 +20,14 @@ async function notifyUser(userId, { type, title, body, url, appointmentId }) {
         relatedAppointmentId: appointmentId
     });
 
-    // Browser push
+    // Check user's push preferences before sending browser push
+    if (notifType) {
+        const user = await User.findById(userId).select('pushNotificationPreferences').lean();
+        const prefs = user?.pushNotificationPreferences;
+        if (prefs && prefs.enabled === false) return;
+        if (prefs && prefs[notifType] === false) return;
+    }
+
     await sendPushToUser(userId, { title, body, url: url || '/' });
 }
 
@@ -40,6 +50,9 @@ function startAppointmentReminderJob() {
                 ]
             });
 
+            const sysConfig = await getSystemConfig();
+            if (!sysConfig.notifications?.reminders) return;
+
             let dayBeforeCount = 0;
             let halfHourCount = 0;
 
@@ -60,7 +73,8 @@ function startAppointmentReminderJob() {
                             title: 'תזכורת: תור מחר',
                             body: `יש לך תור ל${appt.service || 'שירות'} מחר (${dateStr}) בשעה ${appt.startTime}`,
                             url: '/my-appointments',
-                            appointmentId: appt._id
+                            appointmentId: appt._id,
+                            notifType: 'reminders'
                         });
                         dayBeforeCount++;
                     }
@@ -70,7 +84,8 @@ function startAppointmentReminderJob() {
                             title: 'תור מחר',
                             body: `${appt.customerName} - ${appt.service || 'תור'} מחר (${dateStr}) בשעה ${appt.startTime}`,
                             url: '/events',
-                            appointmentId: appt._id
+                            appointmentId: appt._id,
+                            notifType: 'reminders'
                         });
                     }
 
@@ -85,7 +100,8 @@ function startAppointmentReminderJob() {
                             title: 'התור שלך בעוד 30 דקות',
                             body: `התור ל${appt.service || 'שירות'} מתחיל בשעה ${appt.startTime}`,
                             url: '/my-appointments',
-                            appointmentId: appt._id
+                            appointmentId: appt._id,
+                            notifType: 'reminders'
                         });
                         halfHourCount++;
                     }
@@ -95,7 +111,8 @@ function startAppointmentReminderJob() {
                             title: 'תור בעוד 30 דקות',
                             body: `${appt.customerName} - ${appt.service || 'תור'} בשעה ${appt.startTime}`,
                             url: '/events',
-                            appointmentId: appt._id
+                            appointmentId: appt._id,
+                            notifType: 'reminders'
                         });
                     }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { usePushNotifications, isIOS, isPWA, getIOSVersion } from '../../hooks/usePushNotifications';
 
 // Context-aware content based on where/when the prompt appears
 function getPromptContent(pathname) {
@@ -10,9 +10,21 @@ function getPromptContent(pathname) {
             description: 'הפעל התראות וקבל תזכורת יום לפני ו-30 דקות לפני התור שלך — ככה אף פעם לא שוכחים.',
             benefits: [
                 { icon: '⏰', text: 'תזכורת אוטומטית לפני התור' },
-                { icon: '🔄', text: 'עדכון מיידי אם יש שינוי' },
+                { icon: '🔄', text: 'עדכון מיידי אם יש שינוי או ביטול' },
             ],
             cta: 'הפעל תזכורות',
+        };
+    }
+
+    if (pathname === '/my-appointments') {
+        return {
+            title: 'קבל עדכונים על התורים שלך',
+            description: 'הפעל התראות כדי לדעת בזמן אמת אם תור אושר, בוטל או שונה — ישירות לדפדפן שלך.',
+            benefits: [
+                { icon: '⏰', text: 'תזכורת יום לפני ו-30 דקות לפני התור' },
+                { icon: '🔔', text: 'עדכון מיידי על ביטול או שינוי תור' },
+            ],
+            cta: 'הפעל עדכונים',
         };
     }
 
@@ -32,30 +44,43 @@ const PushNotificationBanner = () => {
     const { isSupported, permission, isSubscribed, loading, subscribe } = usePushNotifications();
     const [dismissed, setDismissed] = useState(false);
     const [show, setShow] = useState(false);
+    const [showIOSGuide, setShowIOSGuide] = useState(false);
     const location = useLocation();
 
+    const iosDevice = isIOS();
+    const iosNoPWA = iosDevice && !isPWA();
+    const iosVersion = getIOSVersion();
+
     useEffect(() => {
-        if (!isSupported || isSubscribed || permission === 'denied' || dismissed) {
+        const lastDismissed = localStorage.getItem('pushBannerDismissed');
+        const cooldownPassed = !lastDismissed || (Date.now() - parseInt(lastDismissed)) / (1000 * 60 * 60 * 24) >= 1;
+
+        if (dismissed || !cooldownPassed) {
+            setShow(false);
+            setShowIOSGuide(false);
+            return;
+        }
+
+        // iOS without PWA: show the "Add to Home Screen" guide instead (only on booking page)
+        if (iosNoPWA && location.pathname.startsWith('/book/')) {
+            const timer = setTimeout(() => {
+                setShowIOSGuide(true);
+                localStorage.setItem('pushBannerDismissed', Date.now().toString());
+            }, 1500);
+            return () => clearTimeout(timer);
+        }
+
+        if (!isSupported || isSubscribed || permission === 'denied') {
             setShow(false);
             return;
         }
 
-        const lastDismissed = localStorage.getItem('pushBannerDismissed');
-        if (lastDismissed) {
-            const daysSince = (Date.now() - parseInt(lastDismissed)) / (1000 * 60 * 60 * 24);
-            if (daysSince < 1) {
-                setShow(false);
-                return;
-            }
-        }
-
         const timer = setTimeout(() => {
             setShow(true);
-            // Save shown timestamp so it only appears once per 24h even if not dismissed
             localStorage.setItem('pushBannerDismissed', Date.now().toString());
         }, 1000);
         return () => clearTimeout(timer);
-    }, [isSupported, isSubscribed, permission, dismissed, location.pathname]);
+    }, [isSupported, isSubscribed, permission, dismissed, location.pathname, iosNoPWA]);
 
     const handleEnable = async () => {
         const success = await subscribe();
@@ -64,11 +89,57 @@ const PushNotificationBanner = () => {
         }
     };
 
-    const handleDismiss = () => {
+    const handleDismissAll = () => {
         setDismissed(true);
         setShow(false);
+        setShowIOSGuide(false);
         localStorage.setItem('pushBannerDismissed', Date.now().toString());
     };
+
+    // iOS "Add to Home Screen" guide
+    if (showIOSGuide) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 pointer-events-none">
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-sm pointer-events-auto" onClick={handleDismissAll} />
+                <div className="relative w-full max-w-sm pointer-events-auto animate-slide-up">
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
+                        <div className="h-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400" />
+                        <div className="p-6">
+                            <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-amber-500/30">
+                                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-900 dark:text-white text-center mb-2">קבל תזכורות לתורים על ה-iPhone</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-5">
+                                {iosVersion !== null && iosVersion < 16
+                                    ? `גרסת iOS ${iosVersion} שלך אינה תומכת בהתראות Push. עדכן ל-iOS 16 ומעלה.`
+                                    : 'הוסף את FlowMatic לדף הבית כדי לקבל התראות על iPhone:'}
+                            </p>
+                            {(iosVersion === null || iosVersion >= 16) && (
+                                <ol className="space-y-2 mb-6 text-right">
+                                    {[
+                                        { num: '1', text: 'לחץ על כפתור השיתוף בתחתית Safari ⎙' },
+                                        { num: '2', text: 'גלול ובחר "הוסף למסך הבית"' },
+                                        { num: '3', text: 'פתח את האפליקציה מהמסך הבית' },
+                                        { num: '4', text: 'לחץ "הפעל תזכורות" בתוך האפליקציה' },
+                                    ].map(step => (
+                                        <li key={step.num} className="flex items-start gap-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl px-4 py-2.5">
+                                            <span className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.num}</span>
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{step.text}</span>
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
+                            <button onClick={handleDismissAll} className="w-full text-center text-sm text-slate-400 hover:text-slate-600 font-medium py-2 transition-colors">
+                                הבנתי, תודה
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (!show) return null;
 
@@ -79,7 +150,7 @@ const PushNotificationBanner = () => {
             {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black/20 backdrop-blur-sm pointer-events-auto animate-fade-in"
-                onClick={handleDismiss}
+                onClick={handleDismissAll}
             />
 
             {/* Card */}
@@ -139,7 +210,7 @@ const PushNotificationBanner = () => {
 
                         {/* Dismiss */}
                         <button
-                            onClick={handleDismiss}
+                            onClick={handleDismissAll}
                             className="w-full text-center text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 font-medium mt-3 py-2 transition-colors"
                         >
                             אולי אחר כך

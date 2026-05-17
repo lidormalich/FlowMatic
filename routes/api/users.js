@@ -224,6 +224,17 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
             if (req.body.smsNotifications.reminderHoursBefore !== undefined) user.smsNotifications.reminderHoursBefore = req.body.smsNotifications.reminderHoursBefore;
         }
 
+        // Push Notification Preferences
+        if (req.body.pushNotificationPreferences) {
+            const p = req.body.pushNotificationPreferences;
+            if (!user.pushNotificationPreferences) user.pushNotificationPreferences = {};
+            if (p.enabled !== undefined) user.pushNotificationPreferences.enabled = p.enabled;
+            if (p.reminders !== undefined) user.pushNotificationPreferences.reminders = p.reminders;
+            if (p.confirmations !== undefined) user.pushNotificationPreferences.confirmations = p.confirmations;
+            if (p.cancellations !== undefined) user.pushNotificationPreferences.cancellations = p.cancellations;
+            if (p.reschedules !== undefined) user.pushNotificationPreferences.reschedules = p.reschedules;
+        }
+
         // Cancellation Policy
         if (req.body.cancellationPolicy) {
             if (req.body.cancellationPolicy.enabled !== undefined) user.cancellationPolicy.enabled = req.body.cancellationPolicy.enabled;
@@ -1095,6 +1106,46 @@ router.get('/admin/export/businesses', passport.authenticate('jwt', { session: f
     logger.error('Export businesses error:', err);
     res.status(500).json({ message: 'שגיאת שרת' });
   }
+});
+
+// ── Admin: Global Notification Settings ──────────────────────────────────────
+
+const SystemConfig = require('../../models/SystemConfig');
+const { invalidateCache } = require('../../utils/systemConfig');
+
+// GET /api/users/admin/notification-settings
+router.get('/admin/notification-settings', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+        const config = await SystemConfig.findById('singleton').lean();
+        const notifications = config?.notifications || {
+            reminders: true, confirmations: true, cancellations: true, reschedules: true
+        };
+        res.json({ notifications });
+    } catch (err) {
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
+});
+
+// PUT /api/users/admin/notification-settings
+router.put('/admin/notification-settings', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: 'אין הרשאה' });
+        const { notifications } = req.body;
+        if (!notifications || typeof notifications !== 'object') {
+            return res.status(400).json({ message: 'נתונים לא תקינים' });
+        }
+        const allowed = ['reminders', 'confirmations', 'cancellations', 'reschedules'];
+        const update = {};
+        for (const key of allowed) {
+            if (typeof notifications[key] === 'boolean') update[`notifications.${key}`] = notifications[key];
+        }
+        await SystemConfig.findByIdAndUpdate('singleton', { $set: update }, { upsert: true });
+        invalidateCache();
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ message: 'שגיאת שרת' });
+    }
 });
 
 module.exports = router;

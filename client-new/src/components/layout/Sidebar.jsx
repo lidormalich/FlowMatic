@@ -18,6 +18,7 @@ const Sidebar = () => {
     { path: '/waitlist', label: 'רשימת המתנה', icon: 'clock', roles: ['admin', 'business_owner'] },
     { path: '/inventory', label: 'מלאי', icon: 'box', roles: ['admin', 'business_owner'] },
     { path: '/templates', label: 'תבניות הודעות', icon: 'message', roles: ['admin', 'business_owner'] },
+    { path: '/notifications', label: 'ההתראות שלי', icon: 'bell', roles: ['admin', 'business_owner', 'client'] },
     { path: '/notification-center', label: 'מרכז התראות', icon: 'bell', roles: ['admin'] },
     { path: '/admin', label: 'לוח בקרה מנהל', icon: 'shield', roles: ['admin'] },
     { path: '/my-appointments', label: 'התורים שלי', icon: 'user' },

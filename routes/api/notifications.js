@@ -52,12 +52,15 @@ router.post('/push-unsubscribe', passport.authenticate('jwt', { session: false }
     }
 });
 
-// GET /api/notifications - Get all notifications for user
+// GET /api/notifications - Get notifications for user (optional ?type= filter, ?limit=)
 router.get('/', passport.authenticate('jwt', { session: false }), async (req, res) => {
     try {
-        const notifications = await Notification.find({ userId: req.user.id })
+        const query = { userId: req.user.id };
+        if (req.query.type) query.type = req.query.type;
+        const limit = Math.min(parseInt(req.query.limit) || 100, 200);
+        const notifications = await Notification.find(query)
             .sort({ createdAt: -1 })
-            .limit(50);
+            .limit(limit);
         res.json(notifications);
     } catch (err) {
         console.error(err);

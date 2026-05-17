@@ -2,6 +2,135 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../services/api';
+import { usePushNotifications, isIOS, isPWA, getIOSVersion } from '../../hooks/usePushNotifications';
+
+const PUSH_TYPES = [
+    { key: 'reminders', label: 'תזכורות תור', desc: '24 שעות ו-30 דקות לפני התור' },
+    { key: 'confirmations', label: 'קביעת תור חדש', desc: 'כשלקוח קובע תור דרך הלינק שלך' },
+    { key: 'cancellations', label: 'ביטול תור', desc: 'כשתור מבוטל' },
+    { key: 'reschedules', label: 'עדכון תור', desc: 'כשסטטוס תור משתנה' },
+];
+
+function PushNotificationSettings({ formData, handleNestedChange, Toggle, isSupported, isSubscribed, permission, subscribe, pushLoading }) {
+    const ios = isIOS();
+    const pwa = isPWA();
+    const iosVer = getIOSVersion();
+    const iosNoInstall = ios && !pwa;
+    const iosOld = ios && pwa && iosVer !== null && iosVer < 16;
+    const prefs = formData.pushNotificationPreferences;
+
+    const handleMasterToggle = async (val) => {
+        handleNestedChange('pushNotificationPreferences', 'enabled', val);
+        if (val && !isSubscribed && isSupported) {
+            const ok = await subscribe();
+            if (!ok) handleNestedChange('pushNotificationPreferences', 'enabled', false);
+        }
+    };
+
+    const statusBadge = isSubscribed
+        ? <span className="text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">פעיל במכשיר זה</span>
+        : permission === 'denied'
+            ? <span className="text-[10px] font-semibold bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full">חסום בדפדפן</span>
+            : null;
+
+    return (
+        <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
+            {/* Header row */}
+            <div className="flex items-center justify-between p-5">
+                <Toggle
+                    checked={prefs.enabled}
+                    onChange={handleMasterToggle}
+                    color="purple"
+                />
+                <div className="text-right flex-1 mr-3">
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <h3 className="font-bold text-slate-900 dark:text-white text-sm">התראות Push</h3>
+                        {statusBadge}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">התראות לדפדפן ולמכשיר שלך</p>
+                </div>
+            </div>
+
+            {/* iOS — not installed as PWA */}
+            {iosNoInstall && (
+                <div className="border-t border-slate-100 dark:border-slate-700/50 p-5">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/40 rounded-xl p-4 text-right space-y-3">
+                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">iPhone: נדרשת התקנה כאפליקציה</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400">כדי לקבל Push על iPhone יש להוסיף את FlowMatic לדף הבית:</p>
+                        <ol className="text-xs text-amber-700 dark:text-amber-400 space-y-1 list-decimal list-inside">
+                            <li>פתח בדפדפן Safari</li>
+                            <li>לחץ על כפתור השיתוף <span className="font-mono">⎙</span></li>
+                            <li>בחר <strong>"הוסף למסך הבית"</strong></li>
+                            <li>פתח את האפליקציה מהמסך הבית והפעל התראות</li>
+                        </ol>
+                    </div>
+                </div>
+            )}
+
+            {/* iOS — old version */}
+            {iosOld && (
+                <div className="border-t border-slate-100 dark:border-slate-700/50 p-5">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200/60 dark:border-red-700/40 rounded-xl p-4 text-right">
+                        <p className="text-sm font-semibold text-red-700 dark:text-red-300">נדרש iOS 16 ומעלה</p>
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-1">גרסת iOS {iosVer} אינה תומכת בהתראות Push. עדכן ל-iOS 16+</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Desktop/Android or iOS PWA ≥ 16 */}
+            {!iosNoInstall && !iosOld && (
+                <>
+                    {/* Subscribe button if not yet subscribed */}
+                    {!isSubscribed && permission !== 'denied' && isSupported && (
+                        <div className="border-t border-slate-100 dark:border-slate-700/50 px-5 py-3">
+                            <button
+                                onClick={async () => {
+                                    const ok = await subscribe();
+                                    if (ok) handleNestedChange('pushNotificationPreferences', 'enabled', true);
+                                }}
+                                disabled={pushLoading}
+                                className="w-full h-10 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+                            >
+                                {pushLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                                )}
+                                הפעל התראות במכשיר זה
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Permission denied notice */}
+                    {permission === 'denied' && (
+                        <div className="border-t border-slate-100 dark:border-slate-700/50 px-5 py-4">
+                            <p className="text-xs text-red-500 dark:text-red-400 text-right">ההרשאה נחסמה בדפדפן. כדי להפעיל: לך להגדרות הדפדפן ואפשר התראות לאתר זה.</p>
+                        </div>
+                    )}
+
+                    {/* Per-type toggles (shown only when master is on) */}
+                    {prefs.enabled && (
+                        <div className="border-t border-slate-100 dark:border-slate-700/50 divide-y divide-slate-100 dark:divide-slate-700/50">
+                            {PUSH_TYPES.map(({ key, label, desc }) => (
+                                <div key={key} className="flex items-center justify-between px-5 py-3.5">
+                                    <Toggle
+                                        checked={prefs[key]}
+                                        onChange={(v) => handleNestedChange('pushNotificationPreferences', key, v)}
+                                        color="purple"
+                                    />
+                                    <div className="text-right flex-1 mr-3">
+                                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{label}</p>
+                                        <p className="text-[10px] text-slate-400">{desc}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
 
 const DAYS_OF_WEEK = [
     { value: 0, label: 'א׳', fullLabel: 'ראשון' },
@@ -18,6 +147,7 @@ const BusinessSettings = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState('business');
+    const { isSupported, isSubscribed, permission, subscribe, loading: pushLoading } = usePushNotifications();
 
     const [formData, setFormData] = useState({
         businessName: '',
@@ -64,6 +194,13 @@ const BusinessSettings = () => {
         smsNotifications: {
             enabled: true,
             reminderHoursBefore: 24
+        },
+        pushNotificationPreferences: {
+            enabled: true,
+            reminders: true,
+            confirmations: true,
+            cancellations: true,
+            reschedules: true
         },
         cancellationPolicy: {
             enabled: true,
@@ -125,6 +262,13 @@ const BusinessSettings = () => {
                 smsNotifications: {
                     enabled: userData.smsNotifications?.enabled ?? true,
                     reminderHoursBefore: userData.smsNotifications?.reminderHoursBefore ?? 24
+                },
+                pushNotificationPreferences: {
+                    enabled: userData.pushNotificationPreferences?.enabled ?? true,
+                    reminders: userData.pushNotificationPreferences?.reminders ?? true,
+                    confirmations: userData.pushNotificationPreferences?.confirmations ?? true,
+                    cancellations: userData.pushNotificationPreferences?.cancellations ?? true,
+                    reschedules: userData.pushNotificationPreferences?.reschedules ?? true
                 },
                 cancellationPolicy: {
                     enabled: userData.cancellationPolicy?.enabled ?? true,
@@ -650,6 +794,7 @@ const BusinessSettings = () => {
             {/* Notifications Tab */}
             {activeTab === 'notifications' && (
                 <div className="space-y-4">
+                    {/* SMS */}
                     <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-xl rounded-2xl border border-slate-200/50 dark:border-white/[0.08] overflow-hidden">
                         <div className="flex items-center justify-between p-5">
                             <Toggle checked={formData.smsNotifications.enabled} onChange={(v) => handleNestedChange('smsNotifications', 'enabled', v)} color="blue" />
@@ -681,6 +826,18 @@ const BusinessSettings = () => {
                             <p className="text-sm text-blue-700 dark:text-blue-300 text-right">כל SMS עולה 2 קרדיטים. יתרה: <strong>{user?.credits || 0}</strong></p>
                         </div>
                     </div>
+
+                    {/* Push Notifications */}
+                    <PushNotificationSettings
+                        formData={formData}
+                        handleNestedChange={handleNestedChange}
+                        Toggle={Toggle}
+                        isSupported={isSupported}
+                        isSubscribed={isSubscribed}
+                        permission={permission}
+                        subscribe={subscribe}
+                        pushLoading={pushLoading}
+                    />
                 </div>
             )}
 

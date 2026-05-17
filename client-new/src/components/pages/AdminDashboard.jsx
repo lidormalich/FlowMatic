@@ -83,11 +83,12 @@ const StatusBadge = ({ business: b }) => {
 };
 
 const TABS = [
-  { key: 'overview',   label: 'סקירה'  },
-  { key: 'businesses', label: 'עסקים'  },
-  { key: 'trends',     label: 'מגמות'  },
-  { key: 'logs',       label: 'לוגים'  },
-  { key: 'alerts',     label: 'התראות' },
+  { key: 'overview',      label: 'סקירה'          },
+  { key: 'businesses',    label: 'עסקים'           },
+  { key: 'trends',        label: 'מגמות'           },
+  { key: 'logs',          label: 'לוגים'           },
+  { key: 'alerts',        label: 'התראות'          },
+  { key: 'notif-control', label: 'שליטת התראות'   },
 ];
 
 const BIZ_FILTERS = [
@@ -116,6 +117,10 @@ const AdminDashboard = () => {
 
   const [suspending, setSuspending] = useState(null);
 
+  // Notification control state
+  const [notifSettings, setNotifSettings] = useState(null);
+  const [notifSaving, setNotifSaving] = useState(false);
+
   const setTab = (key) => setSearchParams({ tab: key });
 
   const loadStats = () => {
@@ -127,6 +132,14 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => { loadStats(); }, []);
+
+  useEffect(() => {
+    if (activeTab === 'notif-control' && !notifSettings) {
+      api.get('/users/admin/notification-settings')
+        .then(res => setNotifSettings(res.data.notifications))
+        .catch(() => toast.error('שגיאה בטעינת הגדרות'));
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'trends' || timeline !== null) return;
@@ -795,6 +808,91 @@ const AdminDashboard = () => {
       ══════════════════════════════════════════════════════════ */}
       {activeTab === 'alerts' && (
         <AdminAlertsTab businesses={businesses} onBusinessUpdated={loadStats} />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+           TAB: שליטת התראות
+      ══════════════════════════════════════════════════════════ */}
+      {activeTab === 'notif-control' && (
+        <div className="max-w-lg mx-auto space-y-4">
+          <div className="text-right mb-2">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">שליטת התראות מערכת</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">הפעל או השבת סוגי התראות ברמת המערכת עבור כל המשתמשים</p>
+          </div>
+
+          {!notifSettings ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-16 bg-slate-200/60 dark:bg-slate-700/40 rounded-2xl animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {[
+                { key: 'reminders',     label: 'תזכורות תור',       desc: 'שליחת תזכורת 24 שעות ו-30 דקות לפני התור (Cron)',       color: 'blue'   },
+                { key: 'confirmations', label: 'אישור קביעת תור',   desc: 'התראה לבעל העסק כשלקוח קובע תור חדש',                  color: 'emerald' },
+                { key: 'cancellations', label: 'ביטול תור',          desc: 'התראה כשתור מבוטל — לבעל העסק וללקוח',                 color: 'red'    },
+                { key: 'reschedules',   label: 'שינוי/עדכון תור',   desc: 'התראה על שינוי סטטוס תור — לבעל העסק וללקוח',          color: 'amber'  },
+              ].map(({ key, label, desc, color }) => {
+                const colorMap = {
+                  blue:    'bg-blue-50 dark:bg-blue-900/20 border-blue-200/60 dark:border-blue-700/40',
+                  emerald: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200/60 dark:border-emerald-700/40',
+                  red:     'bg-red-50 dark:bg-red-900/20 border-red-200/60 dark:border-red-700/40',
+                  amber:   'bg-amber-50 dark:bg-amber-900/20 border-amber-200/60 dark:border-amber-700/40',
+                };
+                const dotMap = {
+                  blue: 'bg-blue-500', emerald: 'bg-emerald-500', red: 'bg-red-500', amber: 'bg-amber-500'
+                };
+                return (
+                  <div key={key} className={`flex items-center justify-between p-4 rounded-2xl border ${colorMap[color]}`}>
+                    <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={!!notifSettings[key]}
+                        onChange={(e) => setNotifSettings(prev => ({ ...prev, [key]: e.target.checked }))}
+                        className="sr-only peer"
+                      />
+                      <div className={`w-[52px] h-[32px] bg-slate-200 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-[28px] after:w-[28px] after:transition-all after:shadow-sm peer-checked:after:translate-x-[20px] rtl:peer-checked:after:-translate-x-[20px]`} />
+                    </label>
+                    <div className="text-right flex-1 mr-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className={`w-2 h-2 rounded-full ${notifSettings[key] ? dotMap[color] : 'bg-slate-300'}`} />
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                onClick={async () => {
+                  setNotifSaving(true);
+                  try {
+                    await api.put('/users/admin/notification-settings', { notifications: notifSettings });
+                    toast.success('הגדרות נשמרו');
+                  } catch {
+                    toast.error('שגיאה בשמירה');
+                  }
+                  setNotifSaving(false);
+                }}
+                disabled={notifSaving}
+                className="w-full h-11 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold rounded-2xl hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+              >
+                {notifSaving
+                  ? <div className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                  : null}
+                שמור הגדרות
+              </button>
+
+              <div className="bg-slate-100 dark:bg-slate-800/60 rounded-xl p-3 text-right">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  שינויים יכנסו לתוקף תוך 5 דקות (cache). כיבוי סוג התראה ימנע שליחה חדשה — התראות שכבר נשלחו לא יבוטלו.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
     </div>

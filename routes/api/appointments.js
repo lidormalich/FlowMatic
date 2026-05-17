@@ -9,6 +9,34 @@ const User = require('../../models/User');
 const AppointmentType = require('../../models/AppointmentType');
 const Client = require('../../models/Client');
 const { sendAppointmentConfirmationSMS, sendAppointmentCancellationSMS } = require('../../services/smsService');
+const { sendPushToUser } = require('../../utils/pushNotify');
+const Notification = require('../../models/Notification');
+const { getSystemConfig } = require('../../utils/systemConfig');
+
+async function notifyOwner(ownerId, prefKey, { title, body, url, type, appointmentId }) {
+    try {
+        // Check global system config first
+        const sysConfig = await getSystemConfig();
+        if (sysConfig.notifications?.[prefKey] === false) return;
+
+        // Always save in-app notification
+        await Notification.create({
+            userId: ownerId,
+            type: type || 'update',
+            title,
+            body,
+            relatedAppointmentId: appointmentId || null
+        });
+        // Check user's push prefs before sending push
+        const owner = await User.findById(ownerId).select('pushNotificationPreferences').lean();
+        const prefs = owner?.pushNotificationPreferences;
+        if (prefs?.enabled === false) return;
+        if (prefs?.[prefKey] === false) return;
+        await sendPushToUser(ownerId, { title, body, url });
+    } catch (err) {
+        console.error('notifyOwner error:', err.message);
+    }
+}
 
 const generateCancelToken = () => crypto.randomBytes(32).toString('hex');
 
@@ -517,9 +545,17 @@ router.post('/public/:username', async (req, res) => {
         await sendAppointmentConfirmationSMS(newAppointment, owner);
       } catch (smsErr) {
         console.error('SMS Error:', smsErr.message);
-        // Don't fail the appointment creation if SMS fails
       }
     }
+
+    // Notify business owner about new booking
+    notifyOwner(owner._id, 'confirmations', {
+      title: 'תור חדש נקבע',
+      body: `${customerName} קבע תור ל${newAppointment.service || 'שירות'} ב-${moment(date).format('DD/MM')} בשעה ${startTime}`,
+      url: '/events',
+      type: 'update',
+      appointmentId: newAppointment._id
+    });
 
     res.status(201).json({
       message: 'התור נקבע בהצלחה',
@@ -659,27 +695,47 @@ router.put('/:id', passport.authenticate('jwt', { session: false }), async (req,
     }
 
     // Send notification + push on status change
-    if (status && status !== oldStatus && appointment.customerId) {
+    if (status && status !== oldStatus) {
       try {
-        const Notification = require('../../models/Notification');
-        const { sendPushToUser } = require('../../utils/pushNotify');
         const statusLabels = { confirmed: 'אושר', cancelled: 'בוטל', completed: 'הושלם', no_show: 'לא הגיע' };
         const label = statusLabels[status] || status;
-        const notifTitle = `התור ${label}`;
-        const notifBody = `התור שלך ל${appointment.service || 'שירות'} בתאריך ${moment(appointment.date).format('DD/MM')} בשעה ${appointment.startTime} ${label}`;
-        await Notification.create({
-          userId: appointment.customerId,
-          type: 'status_change',
-          title: notifTitle,
-          body: notifBody,
-          relatedAppointmentId: appointment._id
-        });
-        // Send browser push
-        await sendPushToUser(appointment.customerId, {
-          title: notifTitle,
-          body: notifBody,
-          url: '/my-appointments'
-        });
+        const dateStr = moment(appointment.date).format('DD/MM');
+        const sysConfig = await getSystemConfig();
+        const sysKey = status === 'cancelled' ? 'cancellations' : 'reschedules';
+        if (sysConfig.notifications?.[sysKey] === false) return;
+
+        // Notify the customer
+        if (appointment.customerId) {
+          const prefKey = status === 'cancelled' ? 'cancellations' : 'reschedules';
+          const notifTitle = `התור ${label}`;
+          const notifBody = `התור שלך ל${appointment.service || 'שירות'} ב-${dateStr} בשעה ${appointment.startTime} ${label}`;
+          await Notification.create({
+            userId: appointment.customerId,
+            type: 'status_change',
+            title: notifTitle,
+            body: notifBody,
+            relatedAppointmentId: appointment._id
+          });
+          const customer = await User.findById(appointment.customerId).select('pushNotificationPreferences').lean();
+          const cp = customer?.pushNotificationPreferences;
+          if (cp?.enabled !== false && cp?.[prefKey] !== false) {
+            await sendPushToUser(appointment.customerId, { title: notifTitle, body: notifBody, url: '/my-appointments' });
+          }
+        }
+
+        // Notify the business owner
+        if (appointment.businessOwnerId) {
+          const ownerPrefKey = status === 'cancelled' ? 'cancellations' : 'reschedules';
+          const ownerTitle = status === 'cancelled' ? 'תור בוטל' : `תור ${label}`;
+          const ownerBody = `${appointment.customerName} - ${appointment.service || 'תור'} ב-${dateStr} בשעה ${appointment.startTime} ${label}`;
+          notifyOwner(appointment.businessOwnerId, ownerPrefKey, {
+            title: ownerTitle,
+            body: ownerBody,
+            url: '/events',
+            type: 'status_change',
+            appointmentId: appointment._id
+          });
+        }
       } catch (notifErr) {
         console.error('Failed to create status notification:', notifErr.message);
       }

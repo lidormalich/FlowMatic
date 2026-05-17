@@ -33,11 +33,20 @@ self.addEventListener('activate', (event) => {
 // Fetch - network first for API, stale-while-revalidate for static
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+
+  // Only handle http/https — ignore chrome-extension://, data:, etc.
+  if (!request.url.startsWith('http')) return;
+
   const url = new URL(request.url);
 
-  // API calls - network only
+  // API calls - network only, absorb failures gracefully
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request).catch(() => new Response('Network error', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      }))
+    );
     return;
   }
 
@@ -52,7 +61,10 @@ self.addEventListener('fetch', (event) => {
           });
         }
         return response;
-      }).catch(() => cached);
+      }).catch(() => cached || new Response('Offline', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      }));
 
       return cached || fetchPromise;
     })
